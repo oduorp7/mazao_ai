@@ -1,0 +1,153 @@
+"""
+bot.py — Mazao AI Telegram Bot
+
+THE entry point. Run this file and the bot is live.
+
+  python bot.py
+
+What this file does:
+  1. Loads .env
+  2. Sets up structured logging
+  3. Registers all command handlers
+  4. Starts the APScheduler (daily reports + KRA alerts)
+  5. Starts polling Telegram for messages
+
+Nothing else lives here. All logic is in handlers.py, scheduler.py,
+pipeline.py (agent), and db.py.
+"""
+
+import os
+import sys
+import asyncio
+from pathlib import Path
+
+# ── Windows stability fixes (MUST happen before other imports) ──────────────
+if sys.platform == "win32":
+    # Ensure emojis don't crash the console
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    
+    # SelectorEventLoop is mandatory for PTB + Windows stability
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except AttributeError:
+        pass
+
+from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
+
+# Add agent pipeline to Python path so handlers can import it
+sys.path.insert(0, str(Path(__file__).parent.parent / "agent"))
+
+load_dotenv()
+
+from handlers import (
+    cmd_start,
+    cmd_help,
+    cmd_report,
+    cmd_vat,
+    cmd_kra,
+    cmd_status,
+    cmd_stop,
+    cmd_resume,
+    handle_message,
+    BOT_COMMANDS,
+)
+from scheduler import create_scheduler
+from utils.logging import get_logger, setup_logging
+
+setup_logging()
+log = get_logger(__name__)
+
+
+def _check_env() -> None:
+    """Fail fast if required environment variables are missing."""
+    required = [
+        "TELEGRAM_BOT_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_KEY",
+    ]
+    missing = [k for k in required if not os.getenv(k)]
+    if missing:
+        log.error("missing_env_vars", missing=missing)
+        print(f"\n❌  Missing environment variables: {', '.join(missing)}")
+        print("    Copy .env.example to .env and fill them in.\n")
+        sys.exit(1)
+
+
+async def post_init(application: Application) -> None:
+    """Called once after the bot starts — set command menu."""
+    await application.bot.set_my_commands(BOT_COMMANDS)
+    log.info("bot_commands_registered", count=len(BOT_COMMANDS))
+
+
+async def main() -> None:
+    _check_env()
+
+    token = os.environ["TELEGRAM_BOT_TOKEN"]
+
+    log.info("bot_starting")
+
+    # ── Build application ─────────────────────────────────────────────────
+    app = (
+        Application.builder()
+        .token(token)
+        .post_init(post_init)
+        .build()
+    )
+
+    # ── Register handlers ─────────────────────────────────────────────────
+    app.add_handler(CommandHandler("start",  cmd_start))
+    app.add_handler(CommandHandler("help",   cmd_help))
+    app.add_handler(CommandHandler("report", cmd_report))
+    app.add_handler(CommandHandler("vat",    cmd_vat))
+    app.add_handler(CommandHandler("kra",    cmd_kra))
+    app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("stop",   cmd_stop))
+    app.add_handler(CommandHandler("resume", cmd_resume))
+
+    # All non-command text → conversation handler
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
+
+    # ── Start scheduler ───────────────────────────────────────────────────
+    scheduler = create_scheduler(app.bot)
+    scheduler.start()
+    log.info("scheduler_started")
+
+    # ── Start polling ─────────────────────────────────────────────────────
+    log.info("bot_polling_start")
+    print("\n✅  Mazao AI bot is running. Press Ctrl+C to stop.\n")
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+    
+    # Run forever until interrupt
+    stop_event = asyncio.Event()
+    try:
+        await stop_event.wait()
+    except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
+        pass
+    finally:
+        log.info("bot_shutdown_start")
+        await app.stop()
+        await app.shutdown()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    except Exception as e:
+        print(f"FATAL: {e}")
+        sys.exit(1)
