@@ -264,3 +264,13 @@ STATEMENT_RECEIVED_PARSING = "📥 *Statement received!*\n\nI'm parsing your tra
 STATEMENT_PARSE_FAILED = "❌ *Parsing Failed*\n\nI couldn't find any valid transactions in that file. Please ensure it is a standard M-Pesa CSV or PDF."
 
 STATEMENT_PARSE_SUCCESS = "✅ *Parsing Successful!*\n\nLoaded *{count}* transactions. Generating your business report now..."
+
+STATEMENT_REQUIRED = """\
+📂 *No transactions found.*
+
+Send me your M-Pesa statement to get started.
+
+*How to get it:*
+MySafaricom app → M-Pesa → Statement → Export CSV
+
+Then send the file here."""
