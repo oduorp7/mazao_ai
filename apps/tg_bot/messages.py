@@ -251,11 +251,57 @@ INDIVIDUAL_ASK_EMPLOYMENT = "💼 What is your current *employment status*?\n\nT
 
 INDIVIDUAL_ASK_SHA = "🏥 Do you have an *SHA (Social Health Authority) number*?\n\nIf you have one, send it now. Otherwise, type /skip to provide it later."
 
-INDIVIDUAL_SETUP_COMPLETE = "🎉 *You're all set, {name}!*\n\nI'll track your personal KRA deadlines and SHA reminders.\n\nType /mystatus anytime to see your upcoming obligations."
+INDIVIDUAL_SETUP_COMPLETE = "🎉 *You're all set, {name}!*\n\nI'll track your personal KRA deadlines and SHA reminders.\n\nType /help anytime to see your commands."
 
 MYSTATUS_HEADER = "👤 *Personal Status — {name}*\nStatus: {status}\n\n*Upcoming Obligations:*\n"
 
 MYSTATUS_OBLIGATION_ROW = "{icon} *{name}* — Due {due_date}\n   {description}\n   Days left: {days_left}\n\n"
+
+MYSTATUS_BUSINESS_REDIRECT = "ℹ️ This command is for individual users.\n\nUse /status for your business dashboard."
+
+ASK_LANGUAGE = "🌐 *Language Preference / Mapendekezo ya Lugha*\n\nWhich language do you prefer for your reports?\nUnapendelea lugha gani kwa ripoti zako?"
+
+LANGUAGE_SET_EN = "✅ Language set to *English*. You will receive your reports in English."
+
+LANGUAGE_SET_SW = "✅ Lugha imewekwa kuwa *Kiswahili*. Utapokea ripoti zako kwa Kiswahili."
+
+# ── Individual Deadline Alerts ───────────────────────────────────────────────
+
+INDIVIDUAL_ANNUAL_RETURN_ALERT = """\
+⏰ *KRA Reminder — Annual Income Tax Return*
+📅 Due date: {due_date}
+⏳ Days left: {days_left}
+⚠️ Penalty: {penalty}
+
+Declaration of income for the previous year is mandatory.\
+"""
+
+INDIVIDUAL_NIL_RETURN_ALERT = """\
+⏰ *KRA Reminder — Nil Return*
+📅 Due date: {due_date}
+⏳ Days left: {days_left}
+⚠️ Penalty: {penalty}
+
+Mandatory zero-income declaration to avoid penalties.\
+"""
+
+INDIVIDUAL_SHA_ALERT = """\
+🏥 *SHA Reminder — Health Contribution*
+📅 Due date: {due_date}
+⏳ Days left: {days_left}
+⚠️ Penalty: {penalty}
+
+2.75% of gross salary. Remind employer to verify if employed.\
+"""
+
+INDIVIDUAL_NSSF_ALERT = """\
+🏦 *NSSF Reminder — Pension Contribution*
+📅 Due date: {due_date}
+⏳ Days left: {days_left}
+⚠️ Penalty: {penalty}
+
+Tier 1 and Tier 2 contributions are due to avoid compounded interest.\
+"""
 
 UNSUPPORTED_FILE_FORMAT = "⚠️ *Unsupported File Format*\n\nPlease send a .csv (from M-Pesa app) or forward your M-Pesa SMS text. PDFs are also supported if they contain text."
 
