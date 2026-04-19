@@ -23,7 +23,7 @@ The platform is optimized for cloud deployment on **Railway.app**.
 ### Local Startup
 1. `pip install -r requirements.txt`
 2. Create `.env` from the provided template.
-3. `python apps/telegram/bot.py`
+3. `python apps/tg_bot/bot.py`
 
 ### Cloud Deployment (Fly.io)
 1. Link your GitHub repository to Fly.io or use the Fly CLI.

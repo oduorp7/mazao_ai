@@ -22,4 +22,3 @@ python-docx==1.2.0
 requests==2.33.1
 urllib3==2.6.3
 aiohttp==3.11.13
-asyncio==3.10.15 # Fallback

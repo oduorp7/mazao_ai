@@ -28,4 +28,4 @@ ENV PYTHONPATH="/app:/app/apps:/app/apps/agent"
 
 # Start the Telegram Bot worker
 # We use 'python' because we aren't using a web server (polling mode)
-CMD ["python", "apps/telegram/bot.py"]
+CMD ["python", "apps/tg_bot/bot.py"]
