@@ -60,13 +60,15 @@ Type /help to see all commands.\
 HELP = """\
 *Mazao AI — Commands*
 
-/report  — Generate today's business report
-/vat     — See your current VAT estimate
-/kra     — Next KRA deadlines & amounts
-/status  — Your account & subscription status
-/stop    — Pause daily reports
-/resume  — Resume daily reports
-/help    — Show this menu
+/report   — Generate today's business report
+/vat      — See your current VAT estimate
+/kra      — Next KRA deadlines & amounts
+/status   — Your account & subscription status
+/mystatus — Individual KRA/SHA status
+/language — Change language / Badilisha lugha
+/stop     — Pause daily reports
+/resume   — Resume daily reports
+/help     — Show this menu
 
 💬 You can also just message me any question about your business finances.\
 """
