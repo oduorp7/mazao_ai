@@ -33,8 +33,8 @@ from datetime import datetime
 from langgraph.graph import StateGraph, END
 from dotenv import load_dotenv
 
-from state import AgentState, RawTransaction, TransactionType
-from nodes import (
+from apps.agent.state import AgentState, RawTransaction, TransactionType
+from apps.agent.nodes import (
     fetch_transactions,
     categorize_transactions,
     reconcile,
@@ -42,7 +42,7 @@ from nodes import (
     generate_report,
     send_whatsapp,
 )
-from utils.logging import get_logger, setup_logging
+from apps.agent.utils.logging import get_logger, setup_logging
 
 load_dotenv()
 setup_logging()

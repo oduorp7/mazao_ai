@@ -125,16 +125,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text(M.WELCOME)
         
     elif data == "type_individual":
-        db.set_conv_state(tid, "awaiting_individual_name", data={"user_type": "individual"})
-        # Create tenant row if not exists
-        if not db.get_tenant(tid):
-            db.create_tenant(
-                telegram_id=tid,
-                telegram_username=query.from_user.username,
-                full_name=query.from_user.full_name,
-            )
-        db.update_tenant(tid, {"user_type": "individual"})
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_individual_name"))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"user_type": "individual"}))
         await query.edit_message_text(M.INDIVIDUAL_ASK_NAME)
+
+    elif data.startswith("emp_"):
+        status = data.replace("emp_", "")
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"employment_status": status}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_language"))
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
+                InlineKeyboardButton("🇰🇪 Swahili", callback_data="lang_sw"),
+            ]
+        ]
+        await query.edit_message_text(M.ASK_LANGUAGE, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("lang_"):
+        lang = data.replace("lang_", "")
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"preferred_language": lang}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        name = tenant.get("full_name") or tenant.get("business_name") or "User"
+        
+        msg = M.LANGUAGE_SET_EN if lang == "en" else M.LANGUAGE_SET_SW
+        await query.edit_message_text(f"{msg}\n\n{M.SETUP_COMPLETE.format(name=name)}")
 
 
 # ── /help ─────────────────────────────────────────────────────────────────────
@@ -159,14 +176,15 @@ async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
         
     if tenant.get("user_type") != "individual":
-        await _reply(update, "This command is only available for Individual accounts.")
+        await _reply(update, M.MYSTATUS_BUSINESS_REDIRECT)
         return
 
-    obligations = db.get_individual_obligations(tid)
+    obligations = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_individual_obligations(tid))
     
+    status_label = tenant.get("employment_status", "unknown").title().replace("_", " ")
     text = M.MYSTATUS_HEADER.format(
         name=tenant.get("full_name", _username(update)),
-        status=tenant.get("employment_status", "unknown").title().replace("_", " ")
+        status=status_label
     )
     
     today = datetime.utcnow()
@@ -314,10 +332,14 @@ async def _run_pipeline_and_reply(
             ),
         )
 
-        if result.report_text_en:
+        # Language selection logic (P2-T4)
+        lang = tenant.get("preferred_language", "en")
+        report_text = result.report_text_sw if lang == "sw" else result.report_text_en
+
+        if report_text:
             await context.bot.send_message(
                 chat_id=tid,
-                text=result.report_text_en,
+                text=report_text,
                 parse_mode=ParseMode.MARKDOWN,
             )
 
@@ -495,6 +517,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             kra_pin=tenant.get("kra_pin", "Not set"),
             plan=plan_map.get(tenant.get("plan", "trial"), tenant.get("plan", "—")),
             status=status_map.get(tenant.get("status", ""), tenant.get("status", "—")),
+            language="🇺🇸 English" if tenant.get("preferred_language") == "en" else "🇰🇪 Kiswahili",
             trial_line=trial_line,
             last_report=last_report,
         ),
@@ -569,51 +592,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await _reply(update, "Please enter a valid Till number (digits only).")
             return
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"mpesa_till": text, "status": "active"}))
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_language"))
         
-        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-        await _reply(update, M.SETUP_COMPLETE.format(name=tenant.get("full_name") or tenant.get("business_name")))
+        keyboard = [
+            [
+                InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
+                InlineKeyboardButton("🇰🇪 Swahili", callback_data="lang_sw"),
+            ]
+        ]
+        await _reply(update, M.ASK_LANGUAGE, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     await _reply(update, M.UNKNOWN_MESSAGE)
-
-    if state == "awaiting_till":
-        # Validate: M-Pesa Till/Paybill is 5-7 digits
-        if not re.match(r"^\d{5,7}$", text):
-            await _reply(
-                update,
-                "⚠️ That doesn't look like a valid Till/Paybill number.\n\nPlease send only digits, e.g. `123456`",
-            )
-            return
-
-        conv_data = conv.get("data", {})
-        db.set_conv_state(
-            tid, "awaiting_kra_pin", data={**conv_data, "mpesa_till": text}
-        )
-        db.update_tenant(tid, {"mpesa_till": text})
-
-        await _reply(update, M.ASK_KRA_PIN.format(till_number=text))
-        return
-
-    if state == "awaiting_kra_pin":
-        # Validate KRA PIN format: A012345678B
-        if not re.match(r"^[A-Za-z]\d{9}[A-Za-z]$", text):
-            await _reply(
-                update,
-                "⚠️ That doesn't look like a valid KRA PIN.\n\nFormat: `A012345678B` (letter, 9 digits, letter)",
-            )
-            return
-
-        db.update_tenant(tid, {"kra_pin": text.upper(), "status": "trial"})
-        db.clear_conv_state(tid)
-
-        tenant = db.get_tenant(tid)
-        name = tenant.get("business_name", _full_name(update))
-
-        await _reply(update, M.SETUP_COMPLETE.format(name=name))
-
-        log.info("onboarding_complete", telegram_id=tid, business_name=name)
-        return
 
     # ── Idle state — not in onboarding ───────────────────────────────────
 
@@ -653,9 +643,8 @@ BOT_COMMANDS = [
     BotCommand("vat",    "See your VAT estimate"),
     BotCommand("kra",    "View KRA deadlines"),
     BotCommand("status", "Account & subscription info"),
+    BotCommand("mystatus", "Individual KRA/SHA status"),
     BotCommand("stop",   "Pause daily reports"),
     BotCommand("resume", "Resume daily reports"),
-    BotCommand("mystatus", "View your individual status"),
-    BotCommand("skip",   "Skip the current optional step"),
     BotCommand("help",   "Show all commands"),
 ]

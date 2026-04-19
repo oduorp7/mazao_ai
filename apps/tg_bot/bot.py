@@ -54,10 +54,9 @@ from apps.tg_bot.handlers import (
     cmd_vat,
     cmd_kra,
     cmd_status,
+    cmd_mystatus,
     cmd_stop,
     cmd_resume,
-    cmd_skip,
-    cmd_mystatus,
     handle_message,
     handle_callback,
     handle_document,
@@ -134,10 +133,9 @@ async def main() -> None:
     app.add_handler(CommandHandler("vat",    cmd_vat))
     app.add_handler(CommandHandler("kra",    cmd_kra))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("mystatus", cmd_mystatus))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("resume", cmd_resume))
-    app.add_handler(CommandHandler("skip", cmd_skip))
-    app.add_handler(CommandHandler("mystatus", cmd_mystatus))
 
     # All non-command text → conversation handler
     app.add_handler(

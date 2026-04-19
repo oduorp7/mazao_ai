@@ -81,9 +81,19 @@ CREATE OR REPLACE VIEW revenue_summary AS
         COUNT(*) as tenant_count
     FROM tenants
     GROUP BY plan, status
--- ── Migration: Sprint 2 ──────────────────────────────────────────────────
+-- ── Migration: Sprint 2 (Stabilized P1) ──────────────────────────────────────
 -- Adds support for Individuals and SHA/Social Health Insurance
+-- [MODIFIED P1] Removed KRA PIN and SHA requirements for faster onboarding.
 
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS user_type TEXT DEFAULT 'business'; 
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS sha_number TEXT; 
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS employment_status TEXT; -- employed | self_employed | unemployed
+
+-- Drop obsolete sensitive columns (P1-T2)
+ALTER TABLE tenants DROP COLUMN IF EXISTS kra_pin;
+ALTER TABLE tenants DROP COLUMN IF EXISTS sha_number;
+
+-- Missing index for report performance (P1-T5)
+CREATE INDEX IF NOT EXISTS idx_reports_period ON reports(period);
+
+-- Language preference for reports (P2-T3)
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS preferred_language TEXT DEFAULT 'en';

@@ -218,6 +218,7 @@ M-Pesa Till: {till_number}
 KRA PIN: {kra_pin}
 Plan: {plan}
 Status: {status}
+Language: {language}
 {trial_line}
 Last report: {last_report}
 

@@ -40,7 +40,7 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from state import (
+from apps.agent.state import (
     AgentState,
     CategorizedTransaction,
     TransactionCategory,
@@ -52,7 +52,7 @@ from state import (
     NodeResult,
     NodeStatus,
 )
-from utils.logging import get_logger
+from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)
 

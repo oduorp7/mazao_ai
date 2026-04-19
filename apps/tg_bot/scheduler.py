@@ -54,10 +54,11 @@ async def job_daily_reports(bot: Bot) -> None:
 
 
 async def _process_tenant(bot: Bot, tenant: dict) -> None:
-    """Run pipeline for one tenant and send result."""
+    """Run pipeline for one tenant and send result (P2-T4)."""
     tid = tenant["telegram_id"]
+    lang = tenant.get("preferred_language", "en")
 
-    log.info("processing_tenant", telegram_id=tid, tenant_id=tenant["id"])
+    log.info("processing_tenant", telegram_id=tid, tenant_id=tenant["id"], lang=lang)
 
     # Fetch real transactions (none in Phase 1 as Daraja is Phase 3)
     real_txs = [] 
@@ -74,10 +75,13 @@ async def _process_tenant(bot: Bot, tenant: dict) -> None:
         ),
     )
 
-    if result.report_text_en:
+    # Language selection logic (P2-T4)
+    report_text = result.report_text_sw if lang == "sw" else result.report_text_en
+
+    if report_text:
         await bot.send_message(
             chat_id=tid,
-            text=result.report_text_en,
+            text=report_text,
             parse_mode=ParseMode.MARKDOWN,
         )
 
@@ -97,7 +101,7 @@ async def _process_tenant(bot: Bot, tenant: dict) -> None:
                 )
             )
 
-        log.info("report_sent", telegram_id=tid)
+        log.info("report_sent", telegram_id=tid, lang=lang)
     else:
         log.warning("empty_report", telegram_id=tid, errors=result.errors)
 
@@ -122,15 +126,49 @@ async def job_deadline_alerts(bot: Bot) -> None:
 
     for tenant in tenants:
         tid = tenant["telegram_id"]
+        user_type = tenant.get("user_type", "business")
 
-        # Get last report to estimate obligation amounts
+        if user_type == "individual":
+            # Individual Obligations Engine (P2-T1)
+            obligations = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_individual_obligations(tid))
+
+            for ob in obligations:
+                due_date = ob["due_date"].date()
+                days_until = (due_date - today).days
+                name = ob["name"]
+                
+                alert_msg = None
+                if "Return" in name and days_until in (30, 7, 2):
+                    alert_msg = M.INDIVIDUAL_ANNUAL_RETURN_ALERT if "Annual" in name else M.INDIVIDUAL_NIL_RETURN_ALERT
+                elif "SHA" in name and days_until == 2:
+                    alert_msg = M.INDIVIDUAL_SHA_ALERT
+                elif "NSSF" in name and days_until == 2:
+                    alert_msg = M.INDIVIDUAL_NSSF_ALERT
+
+                if alert_msg:
+                    try:
+                        await bot.send_message(
+                            chat_id=tid,
+                            text=alert_msg.format(
+                                due_date=due_date.strftime("%d %b %Y"),
+                                days_left=f"{days_until} days",
+                                penalty=ob.get("penalty", "Standard iTax penalties apply"),
+                            ),
+                            parse_mode=ParseMode.MARKDOWN,
+                        )
+                        log.info("individual_alert_sent", telegram_id=tid, obligation=name)
+                    except Exception as exc:
+                        log.exception("individual_alert_failed", telegram_id=tid, error=str(exc))
+            continue
+
+        # Business Obligations
         report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
         income = report["summary"].get("income", 0) if report else 0
         expenses = report["summary"].get("expenses", 0) if report else 0
 
         # VAT estimate
         net_vat = max((income - expenses) * 0.16, 0)
-        # PAYE rough estimate: 30% of salary spend
+        # PAYE rough estimate
         salary = expenses * 0.3
         paye_est = salary * 0.30
 
@@ -141,7 +179,6 @@ async def job_deadline_alerts(bot: Bot) -> None:
             "NHIF/SHA": salary * 0.0275,
         }
 
-        # Calculate due dates for current/next month
         first_of_next_month = (
             datetime.utcnow().replace(day=1) + timedelta(days=32)
         ).replace(day=1).date()
@@ -164,8 +201,6 @@ async def job_deadline_alerts(bot: Bot) -> None:
                         ),
                         parse_mode=ParseMode.MARKDOWN,
                     )
-                    log.info("alert_sent_7d", telegram_id=tid, obligation=ob["type"])
-
                 elif days_until == 2:
                     await bot.send_message(
                         chat_id=tid,
@@ -177,8 +212,6 @@ async def job_deadline_alerts(bot: Bot) -> None:
                         ),
                         parse_mode=ParseMode.MARKDOWN,
                     )
-                    log.info("alert_sent_2d", telegram_id=tid, obligation=ob["type"])
-
                 elif days_until < 0:
                     await bot.send_message(
                         chat_id=tid,
@@ -188,15 +221,8 @@ async def job_deadline_alerts(bot: Bot) -> None:
                         ),
                         parse_mode=ParseMode.MARKDOWN,
                     )
-                    log.info("alert_sent_overdue", telegram_id=tid, obligation=ob["type"])
-
             except Exception as exc:
-                log.exception(
-                    "alert_failed",
-                    telegram_id=tid,
-                    obligation=ob["type"],
-                    error=str(exc),
-                )
+                log.exception("alert_failed", telegram_id=tid, obligation=ob["type"], error=str(exc))
 
     log.info("deadline_alerts_complete")
 
