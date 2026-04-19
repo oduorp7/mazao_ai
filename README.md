@@ -15,10 +15,15 @@ Mazao AI uses a "High-Assurance" architecture designed for precision and reliabi
 - **Agent Engine**: Built with **LangGraph**, utilizing a custom state machine for deterministic transaction processing.
 - **AI Core**: Powered by **Claude 3.5 Sonnet** (via Anthropic) for surgical data extraction.
 - **Persistence**: **Supabase (PostgreSQL)** with strict Row Level Security (RLS).
-- **Interface**: Asynchronous **Telegram Bot** featuring multi-step onboarding and automated daily reporting.
+- **Interface**: Asynchronous **Telegram Bot** featuring:
+    - Multi-step onboarding (Business vs Individual).
+    - Unified **Business Status Dashboard** (/status).
+    - **Subscription Reminder System** (/subscribe).
+    - Utility Prediction Engine (/tokens, /fuliza).
+    - Automated daily profit reporting.
 
 ## 🚀 Deployment Status: PRODUCTION READY
-The platform is optimized for cloud deployment on **Railway.app**.
+The platform is optimized for cloud deployment on **Fly.io** with integrated health monitoring.
 
 ### Local Startup
 1. `pip install -r requirements.txt`
