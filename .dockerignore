@@ -1,0 +1,18 @@
+# Exclude from build context
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.git/
+.github/
+
+# Local artifacts
+apps/agent/tests/test_output/
+Mazao_AI_Strategy_Extracted/
+Mazao_AI_Strategy_v1.docx
+
+# sensitive
+.env
+apps/telegram/.env

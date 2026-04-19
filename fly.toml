@@ -1,0 +1,19 @@
+# fly.toml — Mazao AI Configuration
+app = "mazao-ai"
+primary_region = "ams" # Closest stable region if nbo isn't available
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Non-sensitive environment variables
+  PYTHONPATH = "/app:/app/apps:/app/apps/agent"
+  TZ = "Africa/Nairobi"
+
+# Note: No [http_service] or [services] block because the bot uses Polling.
+# This prevents Fly.io from trying to do health checks on a port that isn't open.
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

@@ -87,7 +87,7 @@ The "Wow" factor. Predicts when electricity tokens, gas, or cash will run out.
 ## 8. Current Action Items (Urgent)
 
 - [ ] **Top up Anthropic Billing**: Unlock "Premium Mode" for Claude AI reports.
-- [ ] **Deploy to Railway.app**: Transfer from Local Workspace to 24/7 cloud hosting.
+- [ ] **Deploy to Fly.io**: Transfer from Local Workspace to 24/7 cloud hosting.
 - [/] **Sprint 2 Execution**: Complete M-Pesa Parser and Individual Onboarding (Ongoing).
 - [ ] **Publish Privacy Policy**: Notion/Markdown page linked to bot greeting.
 

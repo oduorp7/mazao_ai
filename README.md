@@ -25,11 +25,11 @@ The platform is optimized for cloud deployment on **Railway.app**.
 2. Create `.env` from the provided template.
 3. `python apps/telegram/bot.py`
 
-### Cloud Deployment (Railway)
-1. Link your GitHub repository to Railway.
-2. Railway will automatically detect the `Procfile` and `runtime.txt`.
-3. Add your `.env` variables to the Railway Dashboard.
-4. Deploy.
+### Cloud Deployment (Fly.io)
+1. Link your GitHub repository to Fly.io or use the Fly CLI.
+2. The `fly.toml` and `Dockerfile` are already configured for a non-web worker bot.
+3. Use `fly secrets set` to add your `.env` variables to the cloud.
+4. Run `fly deploy`.
 
 ---
 *Built for the hustle. Optimized for the harvest.*
