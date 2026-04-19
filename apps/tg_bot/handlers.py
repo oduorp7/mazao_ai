@@ -31,12 +31,9 @@ from telegram import (
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
-# Add agent pipeline to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "agent"))
-
-import db
-import messages as M
-from utils.logging import get_logger
+import apps.tg_bot.db as db
+import apps.tg_bot.messages as M
+from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -73,23 +70,36 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tid = _tg_id(update)
     log.info("cmd_start", telegram_id=tid)
 
-    tenant = db.get_tenant(tid)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
     if tenant and tenant["status"] in ("active", "trial"):
         # Already registered — show help instead
         await _reply(update, M.HELP)
         return
 
-    # Sprint 2: User Type selection
-    keyboard = [
-        [
-            InlineKeyboardButton("🏪 Business Owner", callback_data="type_business"),
-            InlineKeyboardButton("👤 Individual", callback_data="type_individual"),
+    conv = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_conv_state(tid))
+    state = conv["state"] if conv else "idle"
+
+    if state == "idle":
+        # First time start: present user type selection
+        keyboard = [
+            [
+                InlineKeyboardButton("🏢 Business Owner", callback_data="type_business"),
+                InlineKeyboardButton("👤 Individual", callback_data="type_individual"),
+            ]
         ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await _reply(update, M.USER_TYPE_SELECT, reply_markup=reply_markup)
+        await _reply(update, M.USER_TYPE_SELECT, reply_markup=InlineKeyboardMarkup(keyboard))
+        # Create tenant row if not exists
+        if not await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid)):
+            await asyncio.get_event_loop().run_in_executor(
+                None, 
+                lambda: db.create_tenant(
+                    telegram_id=tid,
+                    telegram_username=_username(update),
+                    full_name=_full_name(update),
+                )
+            )
+        return
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -125,34 +135,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
         db.update_tenant(tid, {"user_type": "individual"})
         await query.edit_message_text(M.INDIVIDUAL_ASK_NAME)
-
-    elif data.startswith("emp_"):
-        emp_status = data.replace("emp_", "")
-        db.update_tenant(tid, {"employment_status": emp_status})
-        db.set_conv_state(tid, "awaiting_sha")
-        
-        status_readable = emp_status.replace("_", " ").title()
-        await query.edit_message_text(
-            f"✅ Status set to: *{status_readable}*\n\n{M.INDIVIDUAL_ASK_SHA}", 
-            parse_mode=ParseMode.MARKDOWN
-        )
-
-# ── /skip ───────────────────────────────────────────────────────────────────
-
-async def cmd_skip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles skipping optional steps like SHA number."""
-    tid = _tg_id(update)
-    conv = db.get_conv_state(tid)
-    state = conv["state"] if conv else "idle"
-    
-    if state == "awaiting_sha":
-        db.update_tenant(tid, {"status": "active"})
-        db.clear_conv_state(tid)
-        tenant = db.get_tenant(tid)
-        await _reply(update, M.INDIVIDUAL_SETUP_COMPLETE.format(name=tenant.get("full_name", "")))
-        return
-
-    await _reply(update, "Nothing to skip right now.")
 
 
 # ── /help ─────────────────────────────────────────────────────────────────────
@@ -313,8 +295,15 @@ async def _run_pipeline_and_reply(
         from pipeline import run_pipeline
         from state import RawTransaction, TransactionType
 
-        # Use passed transactions or fall back to sample/real fetch
-        txs = custom_transactions if custom_transactions is not None else _get_sample_transactions(tenant)
+        # Use passed transactions or fail if none
+        txs = custom_transactions
+        if not txs:
+            await context.bot.send_message(
+                chat_id=tid,
+                text=M.STATEMENT_REQUIRED,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
 
         result = await asyncio.get_event_loop().run_in_executor(
             None,
@@ -335,15 +324,18 @@ async def _run_pipeline_and_reply(
             # Persist report
             if result.reconciliation:
                 r = result.reconciliation
-                db.save_report(
-                    tenant_id=str(tenant["id"]),
-                    period=datetime.utcnow().strftime("%Y-%m"),
-                    summary={
-                        "income": r.total_income,
-                        "expenses": r.total_expenses,
-                        "profit": r.net_profit,
-                        "flagged": r.flagged_count,
-                    },
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: db.save_report(
+                        tenant_id=str(tenant["id"]),
+                        period=datetime.utcnow().strftime("%Y-%m"),
+                        summary={
+                            "income": r.total_income,
+                            "expenses": r.total_expenses,
+                            "profit": r.net_profit,
+                            "flagged": r.flagged_count,
+                        },
+                    )
                 )
         else:
             await context.bot.send_message(
@@ -361,65 +353,18 @@ async def _run_pipeline_and_reply(
         )
 
 
-def _get_sample_transactions(tenant: dict):
-    """
-    Returns sample transactions for demo/dev mode.
-    Replace this with real Daraja API calls in production.
-    """
-    from state import RawTransaction, TransactionType
-
-    return [
-        RawTransaction(
-            mpesa_ref="QHF001",
-            amount=3500.0,
-            phone="0712000001",
-            name="JANE WANJIKU",
-            shortcode=tenant.get("mpesa_till", "123456"),
-            transaction_type=TransactionType.C2B,
-            timestamp=datetime.utcnow() - timedelta(days=1),
-        ),
-        RawTransaction(
-            mpesa_ref="QHF002",
-            amount=12000.0,
-            phone="0723000002",
-            name="KAMAU HARDWARE",
-            shortcode=tenant.get("mpesa_till", "123456"),
-            transaction_type=TransactionType.C2B,
-            timestamp=datetime.utcnow() - timedelta(days=2),
-        ),
-        RawTransaction(
-            mpesa_ref="QHF003",
-            amount=8500.0,
-            phone="0734000003",
-            name="JOHN MWANGI",
-            shortcode=tenant.get("mpesa_till", "123456"),
-            transaction_type=TransactionType.B2C,
-            timestamp=datetime.utcnow() - timedelta(days=3),
-        ),
-        RawTransaction(
-            mpesa_ref="QHF004",
-            amount=4800.0,
-            phone="0745000004",
-            name="NAIVAS SUPERMARKET",
-            shortcode=tenant.get("mpesa_till", "123456"),
-            transaction_type=TransactionType.B2B,
-            timestamp=datetime.utcnow() - timedelta(days=4),
-        ),
-    ]
-
-
 # ── /vat ──────────────────────────────────────────────────────────────────────
 
 async def cmd_vat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tid = _tg_id(update)
-    tenant = db.get_tenant(tid)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
 
     # Try to get latest cached report
-    report = db.get_latest_report(str(tenant["id"]))
+    report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
 
     if not report:
         await _reply(
@@ -472,7 +417,7 @@ async def cmd_vat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tid = _tg_id(update)
-    tenant = db.get_tenant(tid)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
@@ -512,13 +457,13 @@ async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tid = _tg_id(update)
-    tenant = db.get_tenant(tid)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
 
-    report = db.get_latest_report(str(tenant["id"]))
+    report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
     last_report = (
         report["created_at"][:10] if report else "No reports yet"
     )
@@ -564,7 +509,7 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
-    db.update_tenant(tid, {"status": "paused"})
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"status": "paused"}))
     await _reply(
         update,
         "⏸️ *Daily reports paused.*\n\nType /resume to turn them back on anytime.\nYour data is safe.",
@@ -577,7 +522,7 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
-    db.update_tenant(tid, {"status": "active"})
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"status": "active"}))
     await _reply(
         update,
         "▶️ *Daily reports resumed!*\n\nYou'll receive your next report tomorrow at 7:00 AM.",
@@ -587,85 +532,50 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # ── Message handler — onboarding flow + free-text ────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Handles all non-command text messages.
-    Routes to the correct onboarding step based on conversation state,
-    or falls back to a helpful unknown-message reply.
-    """
     tid = _tg_id(update)
     text = (update.message.text or "").strip()
 
-    conv = db.get_conv_state(tid)
+    conv = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_conv_state(tid))
     state = conv["state"] if conv else "idle"
-
-    log.info("message_received", telegram_id=tid, state=state, length=len(text))
-
-    # ── Onboarding state machine ──────────────────────────────────────────
-
-    # ── Individual Onboarding ──────────────────────────────────────────
 
     if state == "awaiting_individual_name":
         if len(text) < 2:
-            await _reply(update, "Please enter your full name (at least 2 characters).")
+            await _reply(update, "Please enter your full name.")
             return
-        db.set_conv_state(tid, "awaiting_individual_kra", data={"full_name": text})
-        db.update_tenant(tid, {"full_name": text})
-        await _reply(update, M.INDIVIDUAL_ASK_KRA.format(name=text))
-        return
-
-    if state == "awaiting_individual_kra":
-        # Validate KRA PIN format: A012345678B
-        if not re.match(r"^[A-Za-z]\d{9}[A-Za-z]$", text):
-            await _reply(
-                update,
-                "⚠️ That doesn't look like a valid KRA PIN.\n\nFormat: `A012345678B` (letter, 9 digits, letter)",
-            )
-            return
-        db.set_conv_state(tid, "awaiting_employment")
-        db.update_tenant(tid, {"kra_pin": text.upper()})
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"full_name": text}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_employment_status"))
         
         keyboard = [
             [
                 InlineKeyboardButton("🏢 Employed", callback_data="emp_employed"),
                 InlineKeyboardButton("🛠️ Self-Employed", callback_data="emp_self_employed"),
             ],
-            [InlineKeyboardButton("🎓 Unemployed / Student", callback_data="emp_unemployed")]
+            [InlineKeyboardButton("🎓 Unemployed", callback_data="emp_unemployed")]
         ]
         await _reply(update, M.INDIVIDUAL_ASK_EMPLOYMENT, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    if state == "awaiting_sha":
-        # Validate SHA: digits only
-        if not re.match(r"^\d+$", text):
-            await _reply(update, "Please send a valid SHA number (digits only), or type /skip.")
-            return
-
-        db.update_tenant(tid, {"sha_number": text, "status": "active"})
-        db.clear_conv_state(tid)
-        tenant = db.get_tenant(tid)
-        await _reply(update, M.INDIVIDUAL_SETUP_COMPLETE.format(name=tenant.get("full_name", "")))
-        return
-
-    # ── Business Onboarding ────────────────────────────────────────────
-
     if state == "awaiting_name":
         if len(text) < 2:
-            await _reply(update, "Please enter your business name (at least 2 characters).")
+            await _reply(update, "Please enter your business name.")
             return
-
-        db.set_conv_state(tid, "awaiting_till", data={"business_name": text})
-
-        # Create tenant row if not exists
-        if not db.get_tenant(tid):
-            db.create_tenant(
-                telegram_id=tid,
-                telegram_username=_username(update),
-                full_name=_full_name(update),
-            )
-        db.update_tenant(tid, {"business_name": text})
-
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"business_name": text}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_till"))
         await _reply(update, M.ASK_MPESA_TILL.format(business_name=text))
         return
+
+    if state == "awaiting_till":
+        if not re.match(r"^\d+$", text):
+            await _reply(update, "Please enter a valid Till number (digits only).")
+            return
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"mpesa_till": text, "status": "active"}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await _reply(update, M.SETUP_COMPLETE.format(name=tenant.get("full_name") or tenant.get("business_name")))
+        return
+
+    await _reply(update, M.UNKNOWN_MESSAGE)
 
     if state == "awaiting_till":
         # Validate: M-Pesa Till/Paybill is 5-7 digits
