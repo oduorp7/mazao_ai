@@ -45,12 +45,9 @@ from telegram.ext import (
 )
 from telegram.constants import ParseMode
 
-# Add agent pipeline to Python path so handlers can import it
-sys.path.insert(0, str(Path(__file__).parent.parent / "agent"))
-
 load_dotenv()
 
-from handlers import (
+from apps.tg_bot.handlers import (
     cmd_start,
     cmd_help,
     cmd_report,
@@ -66,8 +63,8 @@ from handlers import (
     handle_document,
     BOT_COMMANDS,
 )
-from scheduler import create_scheduler
-from utils.logging import get_logger, setup_logging
+from apps.tg_bot.scheduler import create_scheduler
+from apps.agent.utils.logging import get_logger, setup_logging
 
 setup_logging()
 log = get_logger(__name__)
