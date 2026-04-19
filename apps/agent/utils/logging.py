@@ -1,4 +1,4 @@
- """
+"""
 Structured logging for Mazao AI agent.
 Every log line is machine-parseable JSON in production,
 human-readable in development.
