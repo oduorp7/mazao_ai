@@ -22,11 +22,9 @@ from apscheduler.triggers.cron import CronTrigger
 from telegram import Bot
 from telegram.constants import ParseMode
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "agent"))
-
-import db
-import messages as M
-from utils.logging import get_logger
+import apps.tg_bot.db as db
+import apps.tg_bot.messages as M
+from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -37,11 +35,7 @@ KENYA_TZ = "Africa/Nairobi"
 # ── Job 1: Daily reports ──────────────────────────────────────────────────────
 
 async def job_daily_reports(bot: Bot) -> None:
-    """
-    Runs the Mazao pipeline for every active/trial tenant
-    and sends the result to their Telegram chat.
-    """
-    tenants = db.get_all_active_tenants()
+    tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
     log.info("daily_reports_start", tenant_count=len(tenants))
 
     for tenant in tenants:
@@ -65,38 +59,17 @@ async def _process_tenant(bot: Bot, tenant: dict) -> None:
 
     log.info("processing_tenant", telegram_id=tid, tenant_id=tenant["id"])
 
-    # Import here to avoid circular imports
-    from pipeline import run_pipeline
-    from state import RawTransaction, TransactionType
+    # Fetch real transactions (none in Phase 1 as Daraja is Phase 3)
+    real_txs = [] 
 
-    # Production: pull from Daraja API using tenant's shortcode
-    # Dev: use sample data
-    sample_txs = [
-        RawTransaction(
-            mpesa_ref=f"SCHED{tenant['id'][:4]}01",
-            amount=5000.0,
-            phone="0712000001",
-            name="CUSTOMER ONE",
-            shortcode=tenant.get("mpesa_till", "123456"),
-            transaction_type=TransactionType.C2B,
-            timestamp=datetime.utcnow() - timedelta(hours=12),
-        ),
-        RawTransaction(
-            mpesa_ref=f"SCHED{tenant['id'][:4]}02",
-            amount=2500.0,
-            phone="0723000002",
-            name="SUPPLIER LTD",
-            shortcode=tenant.get("mpesa_till", "123456"),
-            transaction_type=TransactionType.B2B,
-            timestamp=datetime.utcnow() - timedelta(hours=6),
-        ),
-    ]
+    from apps.agent.pipeline import run_pipeline
+    from apps.agent.state import RawTransaction, TransactionType
 
     result = await asyncio.get_event_loop().run_in_executor(
         None,
         lambda: run_pipeline(
             tenant_id=str(tenant["id"]),
-            raw_transactions=sample_txs,
+            raw_transactions=real_txs,
             triggered_by="scheduled",
         ),
     )
@@ -110,15 +83,18 @@ async def _process_tenant(bot: Bot, tenant: dict) -> None:
 
         if result.reconciliation:
             r = result.reconciliation
-            db.save_report(
-                tenant_id=str(tenant["id"]),
-                period=datetime.utcnow().strftime("%Y-%m"),
-                summary={
-                    "income": r.total_income,
-                    "expenses": r.total_expenses,
-                    "profit": r.net_profit,
-                    "flagged": r.flagged_count,
-                },
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.save_report(
+                    tenant_id=str(tenant["id"]),
+                    period=datetime.utcnow().strftime("%Y-%m"),
+                    summary={
+                        "income": r.total_income,
+                        "expenses": r.total_expenses,
+                        "profit": r.net_profit,
+                        "flagged": r.flagged_count,
+                    },
+                )
             )
 
         log.info("report_sent", telegram_id=tid)
@@ -139,11 +115,7 @@ PENALTY_RATE = 0.05   # 5% per month
 
 
 async def job_deadline_alerts(bot: Bot) -> None:
-    """
-    Checks every active tenant against KRA obligation calendar.
-    Sends alerts at T-7, T-2, and T+0 (overdue).
-    """
-    tenants = db.get_all_active_tenants()
+    tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
     today = datetime.utcnow().date()
 
     log.info("deadline_alerts_start", tenant_count=len(tenants))
@@ -152,7 +124,7 @@ async def job_deadline_alerts(bot: Bot) -> None:
         tid = tenant["telegram_id"]
 
         # Get last report to estimate obligation amounts
-        report = db.get_latest_report(str(tenant["id"]))
+        report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
         income = report["summary"].get("income", 0) if report else 0
         expenses = report["summary"].get("expenses", 0) if report else 0
 
@@ -231,11 +203,7 @@ async def job_deadline_alerts(bot: Bot) -> None:
 
 # ── Job 3: Trial expiry warnings ──────────────────────────────────────────────
 
-async def job_trial_warnings(bot: Bot) -> None:
-    """
-    Warns users whose trial expires in 3 days.
-    """
-    tenants = db.get_all_active_tenants()
+    tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
 
     for tenant in tenants:
         if tenant.get("plan") != "trial":
@@ -244,9 +212,12 @@ async def job_trial_warnings(bot: Bot) -> None:
         days_left = tenant.get("trial_days_left", 0)
 
         # Decrement trial days
-        db.update_tenant(
-            tenant["telegram_id"],
-            {"trial_days_left": max(days_left - 1, 0)},
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: db.update_tenant(
+                tenant["telegram_id"],
+                {"trial_days_left": max(days_left - 1, 0)},
+            )
         )
 
         if days_left in (3, 1):
