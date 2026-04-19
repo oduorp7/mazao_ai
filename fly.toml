@@ -10,8 +10,19 @@ primary_region = "ams" # Closest stable region if nbo isn't available
   PYTHONPATH = "/app:/app/apps:/app/apps/agent"
   TZ = "Africa/Nairobi"
 
-# Note: No [http_service] or [services] block because the bot uses Polling.
-# This prevents Fly.io from trying to do health checks on a port that isn't open.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
 
 [[vm]]
   memory = "512mb"

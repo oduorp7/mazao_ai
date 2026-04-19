@@ -489,15 +489,36 @@ async def _run_pipeline_and_reply(
         from pipeline import run_pipeline
         from state import RawTransaction, TransactionType
 
-        # Use passed transactions or fail if none
+        # Use passed transactions or fall back to live transactions (P6-T6)
         txs = custom_transactions
         if not txs:
-            await context.bot.send_message(
-                chat_id=tid,
-                text=M.STATEMENT_REQUIRED,
-                parse_mode=ParseMode.MARKDOWN,
-            )
-            return
+            from datetime import datetime
+            now = datetime.utcnow()
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+            
+            live_resp = db.get_client().table("live_transactions").select("*").eq("tenant_id", str(tenant["id"])).gte("trans_time", month_start).execute()
+            if live_resp and live_resp.data:
+                from apps.agent.state import RawTransaction, TransactionType
+                txs = []
+                for lt in live_resp.data:
+                    tx_time = datetime.fromisoformat(lt["trans_time"].replace("Z", "+00:00"))
+                    txs.append(RawTransaction(
+                        mpesa_ref=lt["trans_id"],
+                        amount=float(lt["amount"]),
+                        phone=lt["msisdn"] or "",
+                        name=lt["first_name"] or "Guest",
+                        shortcode=lt["bill_ref"] or "",
+                        transaction_type=TransactionType.PAYMENT_RECEIVED,
+                        timestamp=tx_time
+                    ))
+                trigger_source = "live_feed"
+            else:
+                await context.bot.send_message(
+                    chat_id=tid,
+                    text=M.STATEMENT_REQUIRED,
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                return
 
         result = await asyncio.get_event_loop().run_in_executor(
             None,
@@ -723,6 +744,24 @@ async def cmd_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await _reply(update, text)
 
 
+# ── /till (P6-T5) ─────────────────────────────────────────────────────────────
+
+async def cmd_till(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """P6-T5: Register M-Pesa Till for live alerts."""
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+
+    if tenant.get("user_type") != "business":
+        await _reply(update, M.TILL_BUSINESS_ONLY)
+        return
+
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_till"))
+    await _reply(update, M.TILL_REGISTRATION_PROMPT)
+
+
 # ── /status ───────────────────────────────────────────────────────────────────
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -748,15 +787,26 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     paye_due = today.replace(day=9) if today.day < 9 else next_month.replace(day=9)
     annual_due = datetime(today.year if today.month <= 6 else today.year + 1, 6, 30)
     
-    # ── 2. Latest Statement ──────────────────────────────────────────────
-    statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
-    if statement:
-        s_summary = (
-            f"Period: {statement.get('period', 'N/A')}\n"
-            f"Net: KES {(statement.get('net') or 0):,.2f}"
-        )
+    # ── 2. Latest Statement / Live Transactions ──────────────────────────
+    from datetime import datetime
+    month_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    live_resp = db.get_client().table("live_transactions").select("*").eq("tenant_id", str(tenant["id"])).gte("trans_time", month_start).execute()
+    live_data = live_resp.data if live_resp else []
+    
+    if live_data:
+        count = len(live_data)
+        last_txn = max(tx["trans_time"] for tx in live_data)
+        last_txn_dt = datetime.fromisoformat(last_txn.replace("Z", "+00:00"))
+        s_summary = f"📡 Live Feed ({count} txns)\nLast: {last_txn_dt.strftime('%H:%M Today')}"
     else:
-        s_summary = "_No statement uploaded yet. (Use /statement)_"
+        statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
+        if statement:
+            s_summary = (
+                f"Period: {statement.get('period', 'N/A')}\n"
+                f"Net: KES {(statement.get('net') or 0):,.2f}"
+            )
+        else:
+            s_summary = "_No statement uploaded yet. (Use /statement)_"
 
     # ── 3. Subscriptions ──────────────────────────────────────────────────
     subs = await asyncio.get_event_loop().run_in_executor(
@@ -839,6 +889,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     conv = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_conv_state(tid))
     state = conv["state"] if conv else "idle"
 
+    if state == "awaiting_till":
+        if re.match(r"^\d{5,7}$", text):
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"till_number": text}))
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            await _reply(update, M.TILL_CONFIRMED.format(till_number=text))
+        else:
+            await _reply(update, M.TILL_INVALID)
+        return
+
     if state == "awaiting_tokens":
         try:
             # Format: "units date" (e.g. "25.5 20/04/2026")
@@ -896,10 +955,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             log.warning("token_parse_failed", error=str(exc))
             await _reply(update, "❌ Invalid format. Please use: `units DD/MM/YYYY` (e.g., `30 20/04/2026`)")
             return
-
-    if state == "awaiting_tokens":
-        # ... logic for tokens ...
-        pass
 
     if state == "awaiting_fuliza":
         # Regex parse: balance and date
@@ -1085,6 +1140,7 @@ BOT_COMMANDS = [
     BotCommand("fuliza",        "Log Fuliza loan"),
     BotCommand("subscribe",     "Add monthly bill"),
     BotCommand("subscriptions", "List active bills"),
+    BotCommand("till",          "Register M-Pesa Till"),
     BotCommand("language",      "Change language"),
     BotCommand("stop",          "Pause bot alerts"),
     BotCommand("resume",        "Resume bot alerts"),

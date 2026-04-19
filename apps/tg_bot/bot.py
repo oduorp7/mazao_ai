@@ -5,12 +5,18 @@ THE entry point. Run this file and the bot is live.
 
   python bot.py
 
-What this file does:
-  1. Loads .env
-  2. Sets up structured logging
-  3. Registers all command handlers
-  4. Starts the APScheduler (daily reports + KRA alerts)
-  5. Starts polling Telegram for messages
+CORE ENVIRONMENT VARIABLES (Required):
+  TELEGRAM_BOT_TOKEN
+  SUPABASE_URL
+  SUPABASE_SERVICE_KEY
+  ANTHROPIC_API_KEY
+  FLY_APP_URL
+
+PAYMENT BRIDGE VARIABLES (Optional - Africa's Talking):
+  AT_API_KEY
+  AT_USERNAME
+  AT_SHORTCODE
+  PAYMENT_PROVIDER (africastalking | daraja)
 
 Nothing else lives here. All logic is in handlers.py, scheduler.py,
 pipeline.py (agent), and db.py.
@@ -77,28 +83,50 @@ log = get_logger(__name__)
 
 
 def _check_env() -> None:
-    """Fail fast if required environment variables are missing."""
-    required = [
+    """Assertion: Startup audit (P6-T8). Failure on core vars causes clean exit."""
+    core = [
         "TELEGRAM_BOT_TOKEN",
-        "ANTHROPIC_API_KEY",
         "SUPABASE_URL",
         "SUPABASE_SERVICE_KEY",
+        "ANTHROPIC_API_KEY",
+        "FLY_APP_URL",
     ]
-    missing = [k for k in required if not os.getenv(k)]
-    if missing:
-        log.error("missing_env_vars", missing=missing)
-        print(f"\n❌  Missing environment variables: {', '.join(missing)}")
-        print("    Copy .env.example to .env and fill them in.\n")
+    payment = ["AT_API_KEY", "AT_USERNAME", "AT_SHORTCODE", "PAYMENT_PROVIDER"]
+    
+    missing_core = [k for k in core if not os.getenv(k)]
+    if missing_core:
+        log.error("critical_env_missing", vars=missing_core)
+        print(f"\n❌  CRITICAL: Missing environment variables: {', '.join(missing_core)}")
+        print("    Bot cannot start without these core configurations.\n")
         sys.exit(1)
+
+    missing_payment = [k for k in payment if not os.getenv(k)]
+    if missing_payment:
+        log.warn("payment_env_missing", vars=missing_payment, mode="statement_only")
+        print(f"\n⚠️   WARNING: Payment variables missing: {', '.join(missing_payment)}")
+        print("    Bot will run in 'Statement Upload Only' mode.\n")
 
 
 async def post_init(application: Application) -> None:
-    """Called once after the bot starts — set command menu."""
+    """Called once after the bot starts — set command menu and register webhooks."""
     try:
         await application.bot.set_my_commands(BOT_COMMANDS)
-        log.info("bot_commands_registered", count=len(BOT_COMMANDS), commands=[c.command for c in BOT_COMMANDS])
+        log.info("bot_commands_registered", count=len(BOT_COMMANDS))
+
+        # P6-T3: Register Payment Provider Callback
+        app_url = os.getenv("FLY_APP_URL")
+        if app_url:
+            from apps.payments import get_provider
+            provider = get_provider()
+            webhook_url = f"{app_url.rstrip('/')}/payments/webhook"
+            success = await provider.register_callback_url(webhook_url)
+            if success:
+                log.info("payment_callback_registered", url=webhook_url)
+            else:
+                log.warn("payment_callback_registration_failed")
+
     except Exception as e:
-        log.error("bot_commands_registration_failed", error=str(e))
+        log.error("post_init_failed", error=str(e))
 
 
 async def main() -> None:
@@ -200,18 +228,38 @@ async def main() -> None:
     # Run forever until interrupt
     stop_event = asyncio.Event()
     
-    # ── Health Check (P5-T6) ────────────────────────────────────────────────
+    # ── Webhook Server (P5-T6 & P6-T2) ───────────────────────────────────────
     from aiohttp import web
+    import asyncio
+    
     async def health_check(request):
         return web.Response(text="OK", status=200)
 
+    async def payment_webhook(request):
+        """P6-T2: Provider-agnostic payment receiver."""
+        try:
+            payload = await request.json()
+            from apps.payments import get_provider
+            provider = get_provider()
+            parsed = await provider.handle_webhook(payload)
+            
+            # Fire-and-forget processing to keep response < 5s
+            asyncio.create_task(process_live_transaction(app.bot, parsed))
+            
+            return web.Response(text="OK", status=200)
+        except Exception as e:
+            log.error("webhook_handler_error", error=str(e))
+            return web.Response(text="OK", status=200) # Always 200 for providers
+
     health_app = web.Application()
     health_app.router.add_get("/health", health_check)
+    health_app.router.add_post("/payments/webhook", payment_webhook)
+    
     runner = web.AppRunner(health_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8080)
     await site.start()
-    log.info("health_check_live", port=8080)
+    log.info("webhook_server_live", port=8080)
 
     # Heartbeat task
     async def heartbeat():
@@ -233,3 +281,65 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+async def process_live_transaction(bot, parsed):
+    """P6-T2: Matches transaction to tenant and notifies them."""
+    try:
+        from apps.tg_bot.db import get_client
+        import apps.tg_bot.messages as M
+        
+        db = get_client()
+        
+        # 1. Match Tenant: MSISDN (Phone) or Till Number (bill_ref used by AT sandbox)
+        # Check till_number first
+        tenant = None
+        resp = db.table("tenants").select("*").eq("till_number", parsed.bill_ref).maybe_single().execute()
+        if resp and resp.data:
+            tenant = resp.data
+        else:
+            # Fallback to phone number matching (sanitized)
+            clean_phone = parsed.msisdn.lstrip("+")
+            resp = db.table("tenants").select("*").ilike("telegram_username", f"%{clean_phone}%").maybe_single().execute()
+            if resp and resp.data:
+                tenant = resp.data
+
+        tenant_id = tenant["id"] if tenant else None
+        
+        # 2. Insert into live_transactions (P6-T4)
+        try:
+            db.table("live_transactions").insert({
+                "tenant_id": tenant_id,
+                "trans_id": parsed.trans_id,
+                "trans_time": parsed.timestamp.isoformat(),
+                "amount": parsed.amount,
+                "msisdn": parsed.msisdn,
+                "first_name": parsed.first_name,
+                "bill_ref": parsed.bill_ref,
+                "provider": parsed.provider
+            }).execute()
+        except Exception as e:
+            if "duplicate key" in str(e).lower():
+                log.info("duplicate_txn_ignored", trans_id=parsed.trans_id)
+                return
+            raise
+
+        # 3. Notify Tenant (P6-T2)
+        if tenant:
+            text = M.PAYMENT_RECEIVED.format(
+                amount=parsed.amount,
+                name=parsed.first_name,
+                msisdn=parsed.msisdn,
+                trans_id=parsed.trans_id
+            )
+            await bot.send_message(
+                chat_id=tenant["telegram_id"],
+                text=text,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            log.info("payment_notification_sent", tenant=tenant["telegram_id"])
+        else:
+            log.warn("payment_unmatched", trans_id=parsed.trans_id, msisdn=parsed.msisdn)
+
+    except Exception as e:
+        log.error("transaction_processing_failed", error=str(e))

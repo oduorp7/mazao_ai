@@ -170,3 +170,34 @@ ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 -- Service Role Policy
 CREATE POLICY "service_all_subscriptions" ON subscriptions
     FOR ALL USING (auth.role() = 'service_role');
+
+
+-- ── Migration: Phase 6 (P6-T4) ────────────────────────────────────────────────
+-- Real-time transaction feed support
+
+CREATE TABLE IF NOT EXISTS live_transactions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID REFERENCES tenants(id),
+    trans_id        TEXT UNIQUE NOT NULL,
+    trans_time      TIMESTAMPTZ,
+    amount          NUMERIC NOT NULL,
+    msisdn          TEXT,
+    first_name      TEXT,
+    bill_ref        TEXT,
+    provider        TEXT DEFAULT 'africastalking',
+    created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+-- Index for lookup (BillRefNumber or MSISDN)
+CREATE INDEX IF NOT EXISTS idx_live_tx_bill_ref ON live_transactions(bill_ref);
+CREATE INDEX IF NOT EXISTS idx_live_tx_msisdn ON live_transactions(msisdn);
+CREATE INDEX IF NOT EXISTS idx_live_tx_tenant_id ON live_transactions(tenant_id);
+
+-- Add till_number to tenants for matching
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS till_number TEXT;
+CREATE INDEX IF NOT EXISTS idx_tenants_till_number ON tenants(till_number);
+
+-- RLS
+ALTER TABLE live_transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_all_live_transactions" ON live_transactions
+    FOR ALL USING (auth.role() = 'service_role');

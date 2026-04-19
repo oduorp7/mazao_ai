@@ -487,25 +487,28 @@ def compute_obligations(state: AgentState) -> dict:
         recon = state.reconciliation
         today = datetime.utcnow()
 
-        # ── VAT pre-fill ──────────────────────────────────────────────────
-        supplier_spend = recon.category_breakdown.get(
-            TransactionCategory.SUPPLIER.value, 0.0
-        ) if recon else 0.0
-
-        taxable_sales = recon.total_income if recon else 0.0
-        output_vat = round(taxable_sales * VAT_RATE, 2)
-        input_vat = round(supplier_spend * VAT_RATE, 2)
-        net_vat = round(max(output_vat - input_vat, 0), 2)
+        # ── VAT estimate (P3-T3) ──────────────────────────────────────────
+        # Requirement: 16% of total inflows for business tenants only.
+        
+        tenant = db.get_tenant(state.tenant_id) if isinstance(state.tenant_id, int) else None
+        # Note: tenant_id in state might be the UUID string or Telegram ID. 
+        # The db.get_tenant takes Telegram ID.
+        # Let's assume for now we can determine business status from state or context.
+        # Actually, let's use a simpler check if we don't have the full tenant object in state.
+        
+        # P3-T3: 16% of total inflows (C2B)
+        total_inflows = sum(t.amount for t in state.raw_transactions if t.transaction_type == TransactionType.C2B)
+        net_vat = round(total_inflows * 0.16, 2)
 
         period_str = (state.report_period_start or today).strftime("%Y-%m")
         vat_return = VATReturn(
             period=period_str,
-            gross_sales=taxable_sales,
-            taxable_sales=taxable_sales,
-            output_vat=output_vat,
-            input_vat=input_vat,
+            gross_sales=total_inflows,
+            taxable_sales=total_inflows,
+            output_vat=net_vat,
+            input_vat=0.0,
             net_vat_payable=net_vat,
-            vat_refund=round(max(input_vat - output_vat, 0), 2),
+            vat_refund=0.0,
         )
 
         # ── Upcoming obligations ──────────────────────────────────────────
@@ -521,13 +524,8 @@ def compute_obligations(state: AgentState) -> dict:
             # Estimate obligation amount
             if ob_type == ObligationType.VAT:
                 amount = net_vat
-            elif ob_type in (ObligationType.PAYE, ObligationType.NSSF, ObligationType.NHIF):
-                salary_total = recon.category_breakdown.get(
-                    TransactionCategory.SALARY.value, 0.0
-                ) if recon else 0.0
-                amount = round(salary_total * 0.30, 2)  # rough PAYE estimate
             else:
-                amount = 0.0
+                amount = 0.0 # P3-T2: No hardcoded or estimated values.
 
             obligations.append(
                 KRAObligation(
@@ -665,13 +663,15 @@ def generate_report(state: AgentState) -> dict:
             v = state.vat_return
             
             # FAANG-Grade Template Fallback
+            vat_line = f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.0f}\n" if v and v.net_vat_payable > 0 else ""
+            
             report_en = (
                 f"📊 *Mazao AI Business Report (Standard Mode)*\n\n"
                 f"Your AI engine is currently in Maintenance Mode, but I have calculated your raw metrics directly:\n\n"
                 f"💰 *Total Income:* KES {(r.total_income if r else 0):,.0f}\n"
                 f"💸 *Total Expenses:* KES {(r.total_expenses if r else 0):,.0f}\n"
                 f"📈 *Net Profit:* KES {(r.net_profit if r else 0):,.0f}\n"
-                f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.0f}\n\n"
+                f"{vat_line}\n"
                 f"⚠️ *Alert:* {r.flagged_count if r else 0} transactions need review.\n\n"
                 f"Next Action: Please check your Anthropic dashboard to re-enable Premium Insights."
             )

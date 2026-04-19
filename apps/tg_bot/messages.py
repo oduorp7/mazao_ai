@@ -398,3 +398,22 @@ BUSINESS_STATUS_DASHBOARD = (
 BUSINESS_STATUS_REDIRECT = "ℹ️ Please use /mystatus for your personal individual dashboard."
 INDIVIDUAL_STATUS_REDIRECT = "ℹ️ Please use /status for your business dashboard."
 
+
+# ── Phase 6: Payments & Africa's Talking Bridge ──────────────────────────────
+
+PAYMENT_RECEIVED = "💸 *Payment Received!*\n\n💰 *Amount:* KES {amount:,.2f}\n👤 *From:* {name} ({msisdn})\n🔢 *Ref:* {trans_id}\n\n_Your profit report has been updated._"
+
+TILL_REGISTRATION_PROMPT = "🛡️ *M-Pesa Till Registration*\n\nPlease enter your M-Pesa Till or Paybill number (5-7 digits) to enable real-time payment alerts."
+
+TILL_CONFIRMED = "✅ *Till Registered: {till_number}*\n\nMazao AI is now listening for payments to this number. You will receive an alert the moment a customer pays."
+
+TILL_INVALID = "❌ *Invalid Till Number*\nPlease enter 5-7 digits only (e.g. 123456)."
+
+TILL_BUSINESS_ONLY = "ℹ️ Real-time Till monitoring is only available for Business accounts. Type /start to update your profile if needed."
+
+PROVIDER_REGISTRATION_SUCCESS = "🚀 *Payment Bridge Active*\nReal-time feed via {provider} is connected."
+
+PROVIDER_REGISTRATION_FAILED = "⚠️ *Payment Bridge offline*\nCould not register callback with {provider}. Manual uploads (/statement) still work."
+
+LIVE_DATA_LABEL = "📡 *Live data via {provider}* ({count} txns, last: {last_txn_time})"
+

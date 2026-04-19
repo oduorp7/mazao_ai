@@ -1,40 +1,58 @@
-# Mazao AI — Financial Operating System for Kenyan SMEs
+# Mazao AI — The Smart Agri-Business Manager
 
-**Mazao AI** is an agentic SaaS platform designed to automate bookkeeping and tax compliance for small and medium enterprises in Kenya. By bridging the gap between M-Pesa transactions and KRA iTax obligations, Mazao AI empowers business owners to focus on growth while the AI handles the paperwork.
+Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax compliance (KRA VAT/PAYE), financial reporting, and utility management for businesses and individuals in Kenya.
 
-## 🌟 Vision
-To be the default financial intelligence layer for every SME in East Africa, starting with Kenya.
+## 🚀 Key Features
 
-## 🗺️ Documentation & Strategy
-- **[Strategic Roadmap](STRATEGIC_ROADMAP.md)**: Our 6-sprint mission to build the "Financial Nervous System" of Kenya.
-- **[Privacy Policy](PRIVACY_POLICY.md)**: ODPC-compliant data management principles.
+*   **Real-time M-Pesa Tracking**: Automatic payment alerts via Africa's Talking C2B Bridge.
+*   **AI Financial Reporting**: Forward your M-Pesa statements for instant profit/loss analysis and tax estimates.
+*   **Tax Compliance**: Automated reminders for VAT (20th), PAYE (9th), and annual returns.
+*   **Utility Predictions**: Track Electricity (Token) depletion and Fuliza loan due dates.
+*   **Multi-language**: Seamless switching between English and Swahili.
 
-## 🏗️ Technical Architecture
-Mazao AI uses a "High-Assurance" architecture designed for precision and reliability:
+## 🛠 Active Commands (15)
 
-- **Agent Engine**: Built with **LangGraph**, utilizing a custom state machine for deterministic transaction processing.
-- **AI Core**: Powered by **Claude 3.5 Sonnet** (via Anthropic) for surgical data extraction.
-- **Persistence**: **Supabase (PostgreSQL)** with strict Row Level Security (RLS).
-- **Interface**: Asynchronous **Telegram Bot** featuring:
-    - Multi-step onboarding (Business vs Individual).
-    - Unified **Business Status Dashboard** (/status).
-    - **Subscription Reminder System** (/subscribe).
-    - Utility Prediction Engine (/tokens, /fuliza).
-    - Automated daily profit reporting.
+| Command | Description |
+|---------|-------------|
+| `/start` | Profile setup (Business or Individual) |
+| `/report` | Generate AI Profit/Loss & Tax report |
+| `/status` | Unified Business Dashboard (Live feed + Tax) |
+| `/mystatus` | Personal obligation tracker |
+| `/statement` | View latest statement summary |
+| `/vat` | Detailed VAT liability projection |
+| `/kra` | Full tax obligation calendar |
+| `/till` | Register M-Pesa Till for live alerts |
+| `/tokens` | Log electricity units (Predict depletion) |
+| `/fuliza` | Log Fuliza loan & due date |
+| `/subscribe` | Add monthly business bills |
+| `/subscriptions` | Manage recurring payments |
+| `/language` | Switch English/Swahili |
+| `/stop` | Pause daily alerts |
+| `/resume` | Resume daily alerts |
 
-## 🚀 Deployment Status: PRODUCTION READY
-The platform is optimized for cloud deployment on **Fly.io** with integrated health monitoring.
+## 📦 Production Setup (Fly.io)
 
-### Local Startup
-1. `pip install -r requirements.txt`
-2. Create `.env` from the provided template.
-3. `python apps/tg_bot/bot.py`
+1.  **Environment**: Clone `.env.example` to `.env` and fill in:
+    *   `TELEGRAM_BOT_TOKEN`
+    *   `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`
+    *   `ANTHROPIC_API_KEY`
+    *   `FLY_APP_URL` (Required for Webhooks)
+    *   `AT_USERNAME` / `AT_API_KEY` / `AT_SHORTCODE`
+2.  **Database**: Run the contents of `apps/tg_bot/schema.sql` in the Supabase SQL Editor.
+3.  **Deploy**: `fly deploy` (Port 8080 exposed for health checks & webhooks).
 
-### Cloud Deployment (Fly.io)
-1. Link your GitHub repository to Fly.io or use the Fly CLI.
-2. The `fly.toml` and `Dockerfile` are already configured for a non-web worker bot.
-3. Use `fly secrets set` to add your `.env` variables to the cloud.
-4. Run `fly deploy`.
+## 💻 Local Development
 
----
-*Built for the hustle. Optimized for the harvest.*
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Run the bot
+python -m apps.tg_bot.bot
+```
+
+## 🛡️ Architecture
+*   **Agent**: Anthropic Claude-3.5-Sonnet (via standard pipeline).
+*   **Database**: Supabase (PostgreSQL with RLS).
+*   **Payments**: Provider-agnostic bridge (Africa's Talking -> Daraja ready).
+*   **Deployment**: Fly.io (Containerized, auto-health checks).
