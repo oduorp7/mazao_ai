@@ -55,11 +55,13 @@ from apps.tg_bot.handlers import (
     cmd_kra,
     cmd_status,
     cmd_mystatus,
+    cmd_language,
     cmd_stop,
     cmd_resume,
     handle_message,
     handle_callback,
     handle_document,
+    handle_photo,
     BOT_COMMANDS,
 )
 from apps.tg_bot.scheduler import create_scheduler
@@ -134,6 +136,7 @@ async def main() -> None:
     app.add_handler(CommandHandler("kra",    cmd_kra))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("mystatus", cmd_mystatus))
+    app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("resume", cmd_resume))
 
@@ -144,6 +147,9 @@ async def main() -> None:
 
     # Document upload handle
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    
+    # Photo upload handle for M-Pesa Screenshots (OCR)
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
     # Inline button clicks
     app.add_handler(CallbackQueryHandler(handle_callback))

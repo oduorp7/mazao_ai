@@ -759,43 +759,20 @@ def send_whatsapp(state: AgentState) -> dict:
                 "node_results": [_record(node_name, NodeStatus.SKIPPED, start)],
             }
 
-        phone_number_id = os.environ.get("WHATSAPP_PHONE_ID", "")
-        token = os.environ.get("WHATSAPP_TOKEN", "")
-        # In production, load tenant's whatsapp_number from DB
-        to_number = os.environ.get("TEST_WHATSAPP_NUMBER", "254700000000")
-
-        if not phone_number_id or not token:
-            log.warning(
-                "whatsapp_credentials_missing",
-                node=node_name,
-                tenant_id=state.tenant_id,
-            )
-            return {
-                "node_results": [
-                    _record(
-                        node_name,
-                        NodeStatus.SKIPPED,
-                        start,
-                        error="WhatsApp credentials not configured",
-                    )
-                ],
-            }
-
-        message_id = _dispatch_whatsapp(to_number, report, phone_number_id, token)
-
-        log.info(
-            "node_success",
+        # --- PHASE 3: STUBBED AWAITING PAYMENT ---
+        log.warning(
+            "whatsapp_delivery_stubbed",
             node=node_name,
             tenant_id=state.tenant_id,
-            message_id=message_id,
-            to=to_number,
+            status="AWAITING_PAYMENT"
         )
-
+        
         return {
-            "whatsapp_sent": True,
-            "whatsapp_message_id": message_id,
-            "node_results": [_record(node_name, NodeStatus.SUCCESS, start)],
+            "whatsapp_sent": False,
+            "whatsapp_message_id": None,
+            "node_results": [_record(node_name, NodeStatus.SKIPPED, start, error="WhatsApp disabled: AWAITING_PAYMENT")],
         }
+
 
     except Exception as exc:
         msg = f"{node_name} failed: {exc}"

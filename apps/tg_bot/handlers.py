@@ -34,6 +34,8 @@ from telegram.constants import ParseMode
 import apps.tg_bot.db as db
 import apps.tg_bot.messages as M
 from apps.agent.utils.logging import get_logger
+from apps.agent.utils.ocr_service import ocr_engine
+from apps.agent.state import RawTransaction, TransactionType
 
 log = get_logger(__name__)
 
@@ -152,6 +154,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
         msg = M.LANGUAGE_SET_EN if lang == "en" else M.LANGUAGE_SET_SW
         await query.edit_message_text(f"{msg}\n\n{M.SETUP_COMPLETE.format(name=name)}")
+
+
+# ── /language ─────────────────────────────────────────────────────────────────
+
+async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Displays the language selection menu."""
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
+            InlineKeyboardButton("🇰🇪 Swahili", callback_data="lang_sw"),
+        ]
+    ]
+    await _reply(update, M.ASK_LANGUAGE, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # ── /help ─────────────────────────────────────────────────────────────────────
@@ -294,6 +316,67 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as exc:
         log.exception("document_parsing_failed", telegram_id=tid, error=str(exc))
         await _reply(update, M.STATEMENT_PARSE_FAILED)
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles uploaded photos/screenshots for OCR processing."""
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+
+    photo = update.message.photo[-1] # Best resolution
+    mime = "image/jpeg"
+    
+    await _reply(update, "📸 *Image received. Scanning for M-Pesa details...*")
+
+    try:
+        file = await context.bot.get_file(photo.file_id)
+        file_bytes = await file.download_as_bytearray()
+        
+        # Dispatch to our Document Intelligence engine (non-blocking if we scale it out later)
+        extracted = await asyncio.get_event_loop().run_in_executor(None, lambda: ocr_engine.process_image(bytes(file_bytes)))
+        
+        if not extracted:
+            await _reply(update, "❌ *Failed to extract transaction fields from this image. Please ensure it's a clear M-Pesa screenshot.*")
+            return
+
+        # Map to State schema
+        try:
+            ts = datetime.strptime(extracted["timestamp"], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            ts = datetime.utcnow()
+            
+        t_type = getattr(TransactionType, extracted.get("transaction_type", "UNKNOWN"), TransactionType.UNKNOWN)
+
+        tx = RawTransaction(
+            mpesa_ref=extracted["mpesa_ref"],
+            amount=extracted["amount"],
+            phone="",
+            name=extracted["sender_name"],
+            shortcode="",
+            transaction_type=t_type,
+            timestamp=ts
+        )
+        
+        await _reply(update, f"✅ *Successfully read transaction {tx.mpesa_ref} for KES {tx.amount:,.2f}.*\n\nReconciling...")
+        
+        # Run pipeline with extracted transactions
+        context.application.create_task(
+            _run_pipeline_and_reply(
+                update, 
+                context, 
+                tenant, 
+                custom_transactions=[tx],
+                trigger_source="telegram_photo"
+            )
+        )
+        
+    except Exception as exc:
+        log.exception("photo_ocr_failed", telegram_id=tid, error=str(exc))
+        await _reply(update, "❌ *OCR Engine encountered an error. Please try a different screenshot or upload a CSV document.*")
 
 
 async def _run_pipeline_and_reply(
@@ -644,6 +727,7 @@ BOT_COMMANDS = [
     BotCommand("kra",    "View KRA deadlines"),
     BotCommand("status", "Account & subscription info"),
     BotCommand("mystatus", "Individual KRA/SHA status"),
+    BotCommand("language", "Change language / Badilisha lugha"),
     BotCommand("stop",   "Pause daily reports"),
     BotCommand("resume", "Resume daily reports"),
     BotCommand("help",   "Show all commands"),
