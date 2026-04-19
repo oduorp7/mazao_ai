@@ -7,6 +7,6 @@
 | 3     | 2026-04-19 | -       | Agent Pipeline (Anthropic) + Statement Parsing. |
 | 4     | 2026-04-19 | cbd1030 | Utility Predictions (Tokens/Fuliza) + Bug fixes. |
 | 5     | 2026-04-19 | be9ecf1 | Subscription Reminders + /status Dashboard + Fly.io Hardening. |
-| 6     | 2026-04-20 | [TBD]   | Real-Time M-Pesa Feed (Africa's Talking Bridge) + Provider Abstraction. |
+| 6     | 2026-04-20 | 9de93c2 | Real-Time M-Pesa Feed (Africa's Talking Bridge) + Provider Abstraction. |
 
 *Note: Sign-off by Chief Engineer required for each phase transition.*
