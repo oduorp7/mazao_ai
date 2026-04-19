@@ -156,6 +156,51 @@ def get_latest_report(tenant_id: str) -> Optional[dict]:
     return resp.data
 
 
+# ── Statements (P3-T4) ────────────────────────────────────────────────────────
+
+def save_statement(
+    tenant_id: str,
+    period: str,
+    total_inflows: float,
+    total_outflows: float,
+    net: float,
+    vat_estimate: float,
+) -> dict:
+    """Store a summary of a parsed M-Pesa statement."""
+    resp = (
+        get_client()
+        .table("statements")
+        .insert(
+            {
+                "tenant_id": tenant_id,
+                "period": period,
+                "total_inflows": total_inflows,
+                "total_outflows": total_outflows,
+                "net": net,
+                "vat_estimate": vat_estimate,
+                "parsed_at": datetime.utcnow().isoformat(),
+            }
+        )
+        .execute()
+    )
+    return resp.data[0]
+
+
+def get_latest_statement(tenant_id: str) -> Optional[dict]:
+    """Retrieve the most recent parsed statement summary."""
+    resp = (
+        get_client()
+        .table("statements")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .order("parsed_at", desc=True)
+        .limit(1)
+        .maybe_single()
+        .execute()
+    )
+    return resp.data
+
+
 def update_tenant_sha(telegram_id: int, sha_number: str) -> dict:
     """Update the SHA number for an individual tenant."""
     return update_tenant(telegram_id, {"sha_number": sha_number})

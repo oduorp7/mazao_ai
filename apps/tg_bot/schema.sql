@@ -97,3 +97,60 @@ CREATE INDEX IF NOT EXISTS idx_reports_period ON reports(period);
 
 -- Language preference for reports (P2-T3)
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS preferred_language TEXT DEFAULT 'en';
+
+-- ── Migration: Phase 3 (P3-T4) ────────────────────────────────────────────────
+-- Store parsed statement summaries
+
+CREATE TABLE IF NOT EXISTS statements (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    period          TEXT, -- e.g. "2026-04"
+    total_inflows   NUMERIC DEFAULT 0,
+    total_outflows  NUMERIC DEFAULT 0,
+    net             NUMERIC DEFAULT 0,
+    vat_estimate    NUMERIC DEFAULT 0,
+    parsed_at       TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_statements_tenant_id ON statements(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_statements_parsed_at ON statements(parsed_at DESC);
+
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS household_size INT DEFAULT 4;
+
+-- ── Migration: Phase 4 (P4-T1, P4-T2) ──────────────────────────────────────────
+-- Utility Prediction Tables
+
+CREATE TABLE IF NOT EXISTS token_entries (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    units           NUMERIC NOT NULL,
+    purchase_date   DATE NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS fuliza_entries (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    balance         NUMERIC NOT NULL,
+    due_date        DATE NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_entries_tenant_id ON token_entries(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_fuliza_entries_tenant_id ON fuliza_entries(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_fuliza_entries_due_date ON fuliza_entries(due_date);
+
+-- ── Row Level Security (Phase 3 & 4) ───────────────────────────────────────
+
+ALTER TABLE statements      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE token_entries   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fuliza_entries   ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_all_statements" ON statements
+    FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "service_all_token_entries" ON token_entries
+    FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "service_all_fuliza_entries" ON fuliza_entries
+    FOR ALL USING (auth.role() = 'service_role');

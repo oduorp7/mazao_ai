@@ -323,3 +323,53 @@ Send me your M-Pesa statement to get started.
 MySafaricom app → M-Pesa → Statement → Export CSV
 
 Then send the file here."""
+
+# ── Phase 4: Utility Prediction ──────────────────────────────────────────────
+
+TOKEN_ENTRY_PROMPT = """
+⚡ *Electricity Token Entry*
+Please enter the number of units purchased and the date (DD/MM/YYYY).
+
+Example: `25.5 20/04/2026`
+"""
+
+TOKEN_DEPLETION_ALERT = """
+⚠️ *Electricity Token Alert*
+Your tokens are running low!
+
+📉 *Estimated remaining:* {units_remaining:,.1f} units
+🗓️ *Estimated depletion:* {depletion_date}
+⏳ *Days left:* {days_remaining} days
+
+Top up soon to avoid a blackout!
+"""
+
+FULIZA_SMS_PROMPT = """
+💸 *Fuliza SMS Tracker*
+Please forward your Safaricom Fuliza balance SMS here.
+
+Example: `Your Fuliza balance is KES 450.00. Please pay by 25/04/2026...`
+"""
+
+FULIZA_PARSED_CONFIRMATION = """
+✅ *Fuliza SMS Parsed*
+I've recorded your outstanding loan:
+
+💰 *Balance:* KES {balance:,.2f}
+📅 *Due Date:* {due_date}
+⏳ *Time left:* {days_until_due} days
+
+Note: Fuliza attracts a 1.0% daily administrative fee.
+"""
+
+FULIZA_REMINDER_ALERT = """
+🚨 *Fuliza Payment Reminder*
+Your Fuliza loan is due soon!
+
+💰 *Outstanding:* KES {balance:,.2f}
+📅 *Due Date:* {due_date}
+⏳ *Days left:* {days_until_due} days
+
+Pay now to maintain your limit and avoid penalties.
+"""
+

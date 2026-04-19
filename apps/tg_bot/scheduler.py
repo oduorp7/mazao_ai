@@ -264,6 +264,89 @@ async def job_deadline_alerts(bot: Bot) -> None:
                     error=str(exc),
                 )
 
+# ── Job 4: Electricity token alerts (P4-T4) ──────────────────────────────────
+
+async def job_token_alerts(bot: Bot) -> None:
+    tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
+    today = datetime.utcnow().date()
+    
+    for tenant in tenants:
+        tid = tenant["telegram_id"]
+        try:
+            # Get latest token entry
+            resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("token_entries")
+                .select("*")
+                .eq("tenant_id", str(tenant["id"]))
+                .order("purchase_date", desc=True)
+                .limit(1)
+                .maybe_single()
+                .execute()
+            )
+            
+            if not resp.data:
+                continue
+                
+            entry = resp.data
+            units = float(entry["units"])
+            
+            # Default rate logic from P4-T1
+            daily_rate = 6.0
+            h_size = tenant.get("household_size", 4)
+            if h_size <= 2: daily_rate = 3.0
+            elif h_size >= 6: daily_rate = 10.0
+            
+            days_passed = (today - datetime.fromisoformat(entry["purchase_date"]).date()).days
+            units_remaining = max(units - (days_passed * daily_rate), 0)
+            days_remaining = int(units_remaining / daily_rate)
+            
+            if days_remaining <= 3:
+                depletion_date = (today + timedelta(days=days_remaining)).strftime("%d %b %Y")
+                await bot.send_message(
+                    chat_id=tid,
+                    text=M.TOKEN_DEPLETION_ALERT.format(
+                        units_remaining=units_remaining,
+                        depletion_date=depletion_date,
+                        days_remaining=days_remaining
+                    ),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+        except Exception as exc:
+            log.exception("token_alert_failed", telegram_id=tid, error=str(exc))
+
+
+# ── Job 5: Fuliza payment reminders (P4-T4) ──────────────────────────────────
+
+async def job_fuliza_alerts(bot: Bot) -> None:
+    today = datetime.utcnow().date()
+    try:
+        # Get all entries due soon
+        resp = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: db.get_client().table("fuliza_entries")
+            .select("*, tenants(telegram_id)")
+            .execute()
+        )
+        
+        for entry in resp.data:
+            due_date = datetime.fromisoformat(entry["due_date"]).date()
+            days_until = (due_date - today).days
+            
+            if 0 <= days_until <= 2:
+                tid = entry["tenants"]["telegram_id"]
+                await bot.send_message(
+                    chat_id=tid,
+                    text=M.FULIZA_REMINDER_ALERT.format(
+                        balance=float(entry["balance"]),
+                        due_date=due_date.strftime("%d %b %Y"),
+                        days_until_due=days_until
+                    ),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+    except Exception as exc:
+        log.exception("fuliza_alerts_failed", error=str(exc))
+
 
 # ── Scheduler factory ─────────────────────────────────────────────────────────
 
@@ -297,15 +380,24 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
     )
 
     # Trial warnings — 9:00 AM Kenya time
-    # scheduler.add_job(
-    #     job_trial_warnings,
-    #     CronTrigger(hour=9, minute=0, timezone=KENYA_TZ),
-    #     args=[bot],
-    #     id="trial_warnings",
-    #     name="Trial expiry warnings",
-    #     misfire_grace_time=300,
-    #     coalesce=True,
-    # )
+    # ... (existing code, commented out)
+    
+    # New Phase 4 jobs
+    scheduler.add_job(
+        job_token_alerts,
+        CronTrigger(hour=10, minute=0, timezone=KENYA_TZ),
+        args=[bot],
+        id="token_alerts",
+        name="Electricity token alerts",
+    )
+    
+    scheduler.add_job(
+        job_fuliza_alerts,
+        CronTrigger(hour=11, minute=0, timezone=KENYA_TZ),
+        args=[bot],
+        id="fuliza_alerts",
+        name="Fuliza loan reminders",
+    )
 
     log.info("scheduler_configured", job_count=len(scheduler.get_jobs()))
     return scheduler

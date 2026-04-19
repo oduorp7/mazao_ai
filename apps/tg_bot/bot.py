@@ -56,6 +56,9 @@ from apps.tg_bot.handlers import (
     cmd_status,
     cmd_mystatus,
     cmd_language,
+    cmd_statement,
+    cmd_tokens,
+    cmd_fuliza,
     cmd_stop,
     cmd_resume,
     handle_message,
@@ -89,8 +92,11 @@ def _check_env() -> None:
 
 async def post_init(application: Application) -> None:
     """Called once after the bot starts — set command menu."""
-    await application.bot.set_my_commands(BOT_COMMANDS)
-    log.info("bot_commands_registered", count=len(BOT_COMMANDS))
+    try:
+        await application.bot.set_my_commands(BOT_COMMANDS)
+        log.info("bot_commands_registered", count=len(BOT_COMMANDS), commands=[c.command for c in BOT_COMMANDS])
+    except Exception as e:
+        log.error("bot_commands_registration_failed", error=str(e))
 
 
 async def main() -> None:
@@ -137,6 +143,9 @@ async def main() -> None:
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("mystatus", cmd_mystatus))
     app.add_handler(CommandHandler("language", cmd_language))
+    app.add_handler(CommandHandler("statement", cmd_statement))
+    app.add_handler(CommandHandler("tokens", cmd_tokens))
+    app.add_handler(CommandHandler("fuliza", cmd_fuliza))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("resume", cmd_resume))
 
@@ -175,6 +184,7 @@ async def main() -> None:
     print("\n✅  Mazao AI bot is running. Press Ctrl+C to stop.\n")
 
     await app.initialize()
+    await post_init(app)
     await app.start()
     await app.updater.start_polling(drop_pending_updates=True)
     

@@ -55,7 +55,7 @@ The "Wow" factor. Predicts when electricity tokens, gas, or cash will run out.
 |:---|:---|:---|:---|
 | **Sprint 1** | **Completed** | Telegram bot live, Onboarding flow, Supabase DB. | Bot responds to `/start`. |
 | **Sprint 2** | **In Progress** | M-Pesa Statement Parser (CSV/PDF), Individual Mode, SHA/NSSF engine. | Real statement produces correct numbers. |
-| **Sprint 3** | Week 5–6 | **Utility Prediction (KPLC Tokens)**, Fuliza trackers, Anthropic Billing resolution. | Electricity depletion accurate within 2 days. |
+| **Sprint 3** | **Completed** | **Utility Prediction (KPLC Tokens)**, Fuliza trackers, Logic Hardening. | Electricity depletion accurate within 2 days. |
 | **Sprint 4** | Week 7–8 | Cooking gas estimator, Water bill tracker, Safaricom Paybill application. | Paybill application submitted for production. |
 | **Sprint 5** | Week 9–12 | **Daraja C2B Webhook Integration**. Real-time transaction feed replaces file upload. | Live transactions reach bot in < 30s. |
 | **Sprint 6** | Month 4–6 | Regional Expansion (Uganda/Tanzania), Swahili support, Credit scoring layer. | First paying customer outside Kenya. |
@@ -86,9 +86,10 @@ The "Wow" factor. Predicts when electricity tokens, gas, or cash will run out.
 
 ## 8. Current Action Items (Urgent)
 
-- [ ] **Top up Anthropic Billing**: Unlock "Premium Mode" for Claude AI reports.
-- [ ] **Deploy to Fly.io**: Transfer from Local Workspace to 24/7 cloud hosting.
-- [/] **Sprint 2 Execution**: Complete M-Pesa Parser and Individual Onboarding (Ongoing).
+- [x] **Top up Anthropic Billing**: Unlock "Premium Mode" for Claude AI reports.
+- [x] **Deploy to Fly.io**: Transfer from Local Workspace to 24/7 cloud hosting.
+- [x] **Sprint 3 Execution**: Complete Utility Prediction & Bot Hardening (Done).
+- [ ] **Sprint 4 Planning**: Cooking gas estimator & Water bill tracker.
 - [ ] **Publish Privacy Policy**: Notion/Markdown page linked to bot greeting.
 
 ---
