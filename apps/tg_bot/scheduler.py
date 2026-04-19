@@ -297,15 +297,15 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
     )
 
     # Trial warnings — 9:00 AM Kenya time
-    scheduler.add_job(
-        job_trial_warnings,
-        CronTrigger(hour=9, minute=0, timezone=KENYA_TZ),
-        args=[bot],
-        id="trial_warnings",
-        name="Trial expiry warnings",
-        misfire_grace_time=300,
-        coalesce=True,
-    )
+    # scheduler.add_job(
+    #     job_trial_warnings,
+    #     CronTrigger(hour=9, minute=0, timezone=KENYA_TZ),
+    #     args=[bot],
+    #     id="trial_warnings",
+    #     name="Trial expiry warnings",
+    #     misfire_grace_time=300,
+    #     coalesce=True,
+    # )
 
     log.info("scheduler_configured", job_count=len(scheduler.get_jobs()))
     return scheduler
