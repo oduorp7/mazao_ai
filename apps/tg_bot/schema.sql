@@ -152,5 +152,21 @@ CREATE POLICY "service_all_statements" ON statements
 CREATE POLICY "service_all_token_entries" ON token_entries
     FOR ALL USING (auth.role() = 'service_role');
 
-CREATE POLICY "service_all_fuliza_entries" ON fuliza_entries
+
+-- ── Subscriptions (P5-T1) ──────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id),
+    name TEXT NOT NULL,
+    amount_kes NUMERIC NOT NULL,
+    renewal_day INTEGER NOT NULL CHECK (renewal_day BETWEEN 1 AND 28),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Enable RLS
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+
+-- Service Role Policy
+CREATE POLICY "service_all_subscriptions" ON subscriptions
     FOR ALL USING (auth.role() = 'service_role');

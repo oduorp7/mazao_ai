@@ -348,6 +348,45 @@ async def job_fuliza_alerts(bot: Bot) -> None:
         log.exception("fuliza_alerts_failed", error=str(exc))
 
 
+async def job_subscription_alerts(bot: Bot) -> None:
+    today = datetime.utcnow().date()
+    try:
+        # Get all subscriptions
+        resp = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: db.get_client().table("subscriptions")
+            .select("*, tenants(telegram_id)")
+            .execute()
+        )
+        
+        for s in resp.data:
+            day = s["renewal_day"]
+            # Calculate days until next renewal
+            if day > today.day:
+                days_until = day - today.day
+                renewal_date = today.replace(day=day)
+            else:
+                # Next month
+                next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+                days_until = (next_month.replace(day=day) - today).days
+                renewal_date = next_month.replace(day=day)
+            
+            if days_until <= 3:
+                tid = s["tenants"]["telegram_id"]
+                await bot.send_message(
+                    chat_id=tid,
+                    text=M.SUBSCRIPTION_REMINDER_ALERT.format(
+                        name=s["name"],
+                        amount=float(s["amount_kes"]),
+                        days_until_due=days_until,
+                        renewal_date=renewal_date.strftime("%d %b %Y")
+                    ),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+    except Exception as exc:
+        log.exception("subscription_alerts_failed", error=str(exc))
+
+
 # ── Scheduler factory ─────────────────────────────────────────────────────────
 
 def create_scheduler(bot: Bot) -> AsyncIOScheduler:
@@ -397,6 +436,15 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
         args=[bot],
         id="fuliza_alerts",
         name="Fuliza loan reminders",
+    )
+    
+    # New Phase 5 jobs
+    scheduler.add_job(
+        job_subscription_alerts,
+        CronTrigger(hour=12, minute=0, timezone=KENYA_TZ),
+        args=[bot],
+        id="subscription_alerts",
+        name="Subscription bill reminders",
     )
 
     log.info("scheduler_configured", job_count=len(scheduler.get_jobs()))

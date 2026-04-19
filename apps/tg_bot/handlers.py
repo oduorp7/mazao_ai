@@ -673,52 +673,132 @@ async def cmd_fuliza(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _reply(update, M.FULIZA_SMS_PROMPT)
 
 
+# ── /subscribe & /subscriptions (P5-T1) ─────────────────────────────────────
+
+async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+    
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_sub_name"))
+    await _reply(update, M.SUBSCRIBE_NAME_PROMPT)
+
+
+async def cmd_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+    
+    subs = await asyncio.get_event_loop().run_in_executor(
+        None, 
+        lambda: db.get_client().table("subscriptions").select("*").eq("tenant_id", str(tenant["id"])).execute()
+    )
+    
+    if not subs.data:
+        await _reply(update, M.SUBSCRIPTIONS_EMPTY)
+        return
+    
+    text = M.SUBSCRIPTIONS_LIST_HEADER
+    today = datetime.utcnow()
+    
+    for s in subs.data:
+        # Calculate next renewal date
+        day = s["renewal_day"]
+        try:
+            next_date = today.replace(day=day)
+            if today.day >= day:
+                # Move to next month
+                next_date = (next_date + timedelta(days=32)).replace(day=day)
+        except ValueError:
+            # Handle Feb 29-31 if renewal_day is set high (schema restricts to 28 so should be safe)
+            next_date = (today + timedelta(days=30)).replace(day=1)
+
+        days_left = (next_date.date() - today.date()).days
+        text += f"• *{s['name']}*: KES {s['amount_kes']:,.0f} (due {next_date.strftime('%d %b')}, *{days_left}d*)\n"
+    
+    await _reply(update, text)
+
+
 # ── /status ───────────────────────────────────────────────────────────────────
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Unified Business Dashboard (P5-T3). Redirects individuals to /mystatus."""
     tid = _tg_id(update)
     tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
+    
+    # P5-T3: Redirect Individual users
+    if tenant.get("user_type") == "individual":
+        await _reply(update, M.BUSINESS_STATUS_REDIRECT)
+        return
 
-    report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
-    last_report = (
-        report["created_at"][:10] if report else "No reports yet"
+    today = datetime.utcnow()
+    
+    # ── 1. Tax Calculation ────────────────────────────────────────────────
+    # VAT (20th), PAYE (9th)
+    next_month = today + timedelta(days=32)
+    vat_due = today.replace(day=20) if today.day < 20 else next_month.replace(day=20)
+    paye_due = today.replace(day=9) if today.day < 9 else next_month.replace(day=9)
+    annual_due = datetime(today.year if today.month <= 6 else today.year + 1, 6, 30)
+    
+    # ── 2. Latest Statement ──────────────────────────────────────────────
+    statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
+    if statement:
+        s_summary = (
+            f"Period: {statement.get('period', 'N/A')}\n"
+            f"Net: KES {(statement.get('net') or 0):,.2f}"
+        )
+    else:
+        s_summary = "_No statement uploaded yet. (Use /statement)_"
+
+    # ── 3. Subscriptions ──────────────────────────────────────────────────
+    subs = await asyncio.get_event_loop().run_in_executor(
+        None, 
+        lambda: db.get_client().table("subscriptions").select("*").eq("tenant_id", str(tenant["id"])).execute()
     )
+    sub_count = len(subs.data) if subs.data else 0
+    next_sub_date = "N/A"
+    sub_days = 0
+    
+    if sub_count > 0:
+        # Find the soonest renewal
+        soonest = 99
+        for s in subs.data:
+            day = s["renewal_day"]
+            days_left = day - today.day if day > today.day else (day + 30 - today.day)
+            if days_left < soonest:
+                soonest = days_left
+                next_date = today.replace(day=day) if day > today.day else (today + timedelta(days=32)).replace(day=day)
+                next_sub_date = next_date.strftime("%d %b")
+                sub_days = soonest
 
-    plan_map = {
-        "trial": f"🆓 Free Trial ({tenant.get('trial_days_left', 0)} days left)",
-        "hustler": "🟢 Hustler (KES 1,500/mo)",
-        "biashara": "🔵 Biashara (KES 3,500/mo)",
-    }
-
-    status_map = {
-        "active": "✅ Active",
-        "trial": "⏳ Trial",
-        "pending": "⚙️ Setup incomplete",
-        "paused": "⏸️ Paused",
-        "lapsed": "❌ Lapsed",
-    }
-
-    trial_line = ""
-    if tenant["plan"] == "trial":
-        days = tenant.get("trial_days_left", 0)
-        trial_line = f"\nTrial ends: {days} days remaining\n"
+    # ── 4. Platform Status ────────────────────────────────────────────────
+    status_map = {"active": "✅ Active", "trial": "⏳ Trial", "paused": "⏸️ Paused"}
+    platform_status = status_map.get(tenant.get("status", ""), "⚙️ Setup")
+    if tenant.get("plan") == "trial":
+        platform_status += f" ({tenant.get('trial_days_left', 0)}d left)"
 
     await _reply(
         update,
-        M.STATUS.format(
-            business_name=tenant.get("business_name", "—"),
-            till_number=tenant.get("mpesa_till", "Not set"),
-            kra_pin=tenant.get("kra_pin", "Not set"),
-            plan=plan_map.get(tenant.get("plan", "trial"), tenant.get("plan", "—")),
-            status=status_map.get(tenant.get("status", ""), tenant.get("status", "—")),
-            language="🇺🇸 English" if tenant.get("preferred_language") == "en" else "🇰🇪 Kiswahili",
-            trial_line=trial_line,
-            last_report=last_report,
-        ),
+        M.BUSINESS_STATUS_DASHBOARD.format(
+            business_name=tenant.get("business_name", "Your Business"),
+            plan_tier=tenant.get("plan", "trial").upper(),
+            vat_days=(vat_due.date() - today.date()).days,
+            paye_days=(paye_due.date() - today.date()).days,
+            annual_days=(annual_due.date() - today.date()).days,
+            statement_summary=s_summary,
+            sub_count=sub_count,
+            next_sub_date=next_sub_date,
+            sub_days=sub_days,
+            platform_status=platform_status
+        )
     )
 
 
@@ -817,11 +897,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await _reply(update, "❌ Invalid format. Please use: `units DD/MM/YYYY` (e.g., `30 20/04/2026`)")
             return
 
+    if state == "awaiting_tokens":
+        # ... logic for tokens ...
+        pass
+
     if state == "awaiting_fuliza":
         # Regex parse: balance and date
-        # "KES 450.00" or "KES450"
         bal_match = re.search(r"KES\s*([\d,]+(?:\.\d+)?)", text, re.IGNORECASE)
-        # "25/04/2026" or "2026-04-25"
         date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{2,4})|(\d{4}-\d{1,2}-\d{1,2})", text)
         
         if not bal_match or not date_match:
@@ -833,9 +915,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             d_str = date_match.group(0)
             fmt = "%d/%m/%Y" if "/" in d_str else "%Y-%m-%d"
             due_date = datetime.strptime(d_str, fmt).date()
-            
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-            
             await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: db.get_client().table("fuliza_entries").insert({
@@ -844,10 +924,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     "due_date": due_date.isoformat()
                 }).execute()
             )
-            
             days_left = (due_date - datetime.utcnow().date()).days
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-            
             await _reply(update, M.FULIZA_PARSED_CONFIRMATION.format(
                 balance=balance,
                 due_date=due_date.strftime("%d %b %Y"),
@@ -858,6 +936,65 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             log.error("fuliza_parse_error", error=str(exc))
             await _reply(update, "❌ Error saving Fuliza entry.")
             return
+
+    if state == "awaiting_sub_name":
+        if len(text) < 2:
+            await _reply(update, "Please enter a valid service name.")
+            return
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_sub_amount", data={"name": text}))
+        await _reply(update, M.SUBSCRIBE_AMOUNT_PROMPT)
+        return
+
+    if state == "awaiting_sub_amount":
+        try:
+            # Clean KES prefix or commas
+            clean_text = text.replace("KES", "").replace(",", "").strip()
+            amount = float(clean_text)
+            old_data = conv.get("data", {})
+            old_data["amount"] = amount
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_sub_day", data=old_data))
+            await _reply(update, M.SUBSCRIBE_DAY_PROMPT)
+        except ValueError:
+            await _reply(update, "❌ Invalid amount. Please enter a number (e.g., `1500`)")
+        return
+
+    if state == "awaiting_sub_day":
+        try:
+            day = int(text)
+            if not (1 <= day <= 28):
+                await _reply(update, "❌ Please enter a day between 1 and 28.")
+                return
+            
+            data = conv.get("data", {})
+            tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+            
+            # Save to DB
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("subscriptions").insert({
+                    "tenant_id": str(tenant["id"]),
+                    "name": data["name"],
+                    "amount_kes": data["amount"],
+                    "renewal_day": day
+                }).execute()
+            )
+            
+            # Calculate next date
+            today = datetime.utcnow()
+            next_date = today.replace(day=day)
+            if today.day >= day:
+                next_date = (next_date + timedelta(days=32)).replace(day=day)
+
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            await _reply(update, M.SUBSCRIBE_CONFIRMED.format(
+                name=data["name"],
+                amount=data["amount"],
+                next_date=next_date.strftime("%d %b %Y")
+            ))
+        except Exception as e:
+            log.error("sub_save_failed", error=str(e))
+            await _reply(update, "❌ Error saving subscription. Please try again.")
+        return
 
     if state == "awaiting_individual_name":
         if len(text) < 2:
@@ -936,17 +1073,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # ── Bot commands menu (shown in Telegram's / menu) ────────────────────────────
 
 BOT_COMMANDS = [
-    BotCommand("start",  "Set up your account"),
-    BotCommand("report", "Generate today's business report"),
-    BotCommand("statement", "View last parsed statement summary"),
-    BotCommand("vat",    "See your VAT estimate"),
-    BotCommand("kra",    "View KRA deadlines"),
-    BotCommand("status", "Account & subscription info"),
-    BotCommand("mystatus", "Individual KRA/SHA status"),
-    BotCommand("language", "Change language / Badilisha lugha"),
-    BotCommand("stop",   "Pause daily reports"),
-    BotCommand("resume", "Resume daily reports"),
-    BotCommand("tokens",  "Electricity token estimator"),
-    BotCommand("fuliza",  "Fuliza SMS tracker"),
-    BotCommand("help",   "Show all commands"),
+    BotCommand("start",         "Set up your account"),
+    BotCommand("help",          "Show all commands"),
+    BotCommand("status",        "Business dashboard"),
+    BotCommand("mystatus",      "Personal dashboard"),
+    BotCommand("report",        "Generate profit report"),
+    BotCommand("vat",           "Show VAT estimate"),
+    BotCommand("kra",           "Show tax deadlines"),
+    BotCommand("statement",     "Show parsing summary"),
+    BotCommand("tokens",        "Log electricity units"),
+    BotCommand("fuliza",        "Log Fuliza loan"),
+    BotCommand("subscribe",     "Add monthly bill"),
+    BotCommand("subscriptions", "List active bills"),
+    BotCommand("language",      "Change language"),
+    BotCommand("stop",          "Pause bot alerts"),
+    BotCommand("resume",        "Resume bot alerts"),
 ]

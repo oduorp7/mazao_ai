@@ -59,6 +59,8 @@ from apps.tg_bot.handlers import (
     cmd_statement,
     cmd_tokens,
     cmd_fuliza,
+    cmd_subscribe,
+    cmd_subscriptions,
     cmd_stop,
     cmd_resume,
     handle_message,
@@ -146,6 +148,8 @@ async def main() -> None:
     app.add_handler(CommandHandler("statement", cmd_statement))
     app.add_handler(CommandHandler("tokens", cmd_tokens))
     app.add_handler(CommandHandler("fuliza", cmd_fuliza))
+    app.add_handler(CommandHandler("subscribe", cmd_subscribe))
+    app.add_handler(CommandHandler("subscriptions", cmd_subscriptions))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("resume", cmd_resume))
 
@@ -163,12 +167,17 @@ async def main() -> None:
     # Inline button clicks
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    # Global error handler
+    # Global error handler (P5-T5)
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-        log.error("unhandled_exception", error=str(context.error))
+        import traceback
+        tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+        tb_string = "".join(tb_list)
+        
+        log.error("unhandled_exception", error=str(context.error), traceback=tb_string)
+        
         if isinstance(update, Update) and update.effective_message:
             await update.effective_message.reply_text(
-                "⚠️  *Mazao AI Logic Error*\nI encountered an internal error. My engineers have been notified.",
+                "⚠️  *Something went wrong*\nOur team has been notified. Please try again or type /help.",
                 parse_mode=ParseMode.MARKDOWN
             )
 
@@ -191,6 +200,19 @@ async def main() -> None:
     # Run forever until interrupt
     stop_event = asyncio.Event()
     
+    # ── Health Check (P5-T6) ────────────────────────────────────────────────
+    from aiohttp import web
+    async def health_check(request):
+        return web.Response(text="OK", status=200)
+
+    health_app = web.Application()
+    health_app.router.add_get("/health", health_check)
+    runner = web.AppRunner(health_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    log.info("health_check_live", port=8080)
+
     # Heartbeat task
     async def heartbeat():
         while not stop_event.is_set():

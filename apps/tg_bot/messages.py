@@ -362,14 +362,39 @@ I've recorded your outstanding loan:
 Note: Fuliza attracts a 1.0% daily administrative fee.
 """
 
-FULIZA_REMINDER_ALERT = """
-🚨 *Fuliza Payment Reminder*
-Your Fuliza loan is due soon!
 
-💰 *Outstanding:* KES {balance:,.2f}
-📅 *Due Date:* {due_date}
-⏳ *Days left:* {days_until_due} days
 
-Pay now to maintain your limit and avoid penalties.
-"""
+# ── Phase 5: Subscriptions & Status ──────────────────────────────────────────
+
+SUBSCRIBE_NAME_PROMPT = "💳 *New Subscription*\n\nWhat is the name of this subscription? (e.g., DStv, Netflix, Zuku WiFi)"
+SUBSCRIBE_AMOUNT_PROMPT = "💰 *Monthly Amount*\n\nHow much is the monthly payment in KES?"
+SUBSCRIBE_DAY_PROMPT = "🗓️ *Renewal Day*\n\nWhat day of the month does it renew? (Enter a number between 1 and 28)"
+SUBSCRIBE_CONFIRMED = "✅ *Subscription Saved!*\n\nService: {name}\nAmount: KES {amount:,.2f}\nNext Reminder: {next_date}"
+
+SUBSCRIPTION_REMINDER_ALERT = (
+    "🔔 *Bill Reminder*\n\n"
+    "Your subscription for *{name}* (KES {amount:,.2f}) is due in {days_until_due} days on *{renewal_date}*."
+)
+
+SUBSCRIPTIONS_LIST_HEADER = "📋 *Your Subscriptions*\n\n"
+SUBSCRIPTIONS_EMPTY = "📂 You have no active subscriptions. Use /subscribe to add one."
+
+BUSINESS_STATUS_DASHBOARD = (
+    "🏢 *{business_name}* — Status Dashboard\n"
+    "Plan: {plan_tier}\n"
+    "━━━━━━━━━━━━━━━━━━━\n\n"
+    "⚖️ *Tax Compliance*\n"
+    "• VAT (due 20th): {vat_days} days\n"
+    "• PAYE (due 9th): {paye_days} days\n"
+    "• Annual Return (30 Jun): {annual_days} days\n\n"
+    "📂 *Latest Statement Summary*\n"
+    "{statement_summary}\n\n"
+    "💳 *Subscriptions*\n"
+    "• Active: {sub_count}\n"
+    "• Next Renewal: {next_sub_date} ({sub_days} days)\n\n"
+    "⏳ *Platform Status*: {platform_status}"
+)
+
+BUSINESS_STATUS_REDIRECT = "ℹ️ Please use /mystatus for your personal individual dashboard."
+INDIVIDUAL_STATUS_REDIRECT = "ℹ️ Please use /status for your business dashboard."
 
