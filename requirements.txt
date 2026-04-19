@@ -1,0 +1,25 @@
+# Mazao AI — Core Dependencies
+# ── Frontend & Bot ─────────────────────────────────────────
+python-telegram-bot[job-queue]==22.7
+python-dotenv==1.2.2
+structlog==25.5.0
+pydantic==2.13.2
+
+# ── Agent & AI ────────────────────────────────────────────
+langgraph==1.0.10
+anthropic==0.45.2
+
+# ── Database ──────────────────────────────────────────────
+supabase==2.28.3
+
+# ── Processing & Utilities ────────────────────────────────
+apscheduler==3.11.0
+pandas==2.2.3
+lxml==6.1.0
+python-docx==1.2.0
+
+# ── Web / Hosting ─────────────────────────────────────────
+requests==2.33.1
+urllib3==2.6.3
+aiohttp==3.11.13
+asyncio==3.10.15 # Fallback

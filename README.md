@@ -5,25 +5,31 @@
 ## 🌟 Vision
 To be the default financial intelligence layer for every SME in East Africa, starting with Kenya.
 
-## 🎯 Purpose
-- **Automated Bookkeeping**: Instantly categorize M-Pesa C2B and B2B transactions into structured financial records.
-- **Tax Compliance**: Real-time tracking of VAT, PAYE, and NSSF obligations to avoid KRA penalties.
-- **Decision Support**: Intelligent daily reports and profitability audits delivered directly via Telegram.
+## 🗺️ Documentation & Strategy
+- **[Strategic Roadmap](STRATEGIC_ROADMAP.md)**: Our 6-sprint mission to build the "Financial Nervous System" of Kenya.
+- **[Privacy Policy](PRIVACY_POLICY.md)**: ODPC-compliant data management principles.
 
 ## 🏗️ Technical Architecture
 Mazao AI uses a "High-Assurance" architecture designed for precision and reliability:
 
 - **Agent Engine**: Built with **LangGraph**, utilizing a custom state machine for deterministic transaction processing.
-- **AI Core**: Powered by **Claude 3.5 Sonnet** for surgical data extraction and bookkeeping reasoning.
-- **Persistence**: **Supabase (PostgreSQL)** with strict Row Level Security (RLS) for multi-tenant data isolation.
+- **AI Core**: Powered by **Claude 3.5 Sonnet** (via Anthropic) for surgical data extraction.
+- **Persistence**: **Supabase (PostgreSQL)** with strict Row Level Security (RLS).
 - **Interface**: Asynchronous **Telegram Bot** featuring multi-step onboarding and automated daily reporting.
 
-## 🚀 Deployment Status: PRE-FLIGHT
-We are currently in the final verification phase.
-- [x] Agent Pipeline Validated (19/19 Tests Pass)
-- [x] Telegram Bot Polling Active
-- [x] Database Schema Defined
-- [x] Watchdog Persistence Implemented
+## 🚀 Deployment Status: PRODUCTION READY
+The platform is optimized for cloud deployment on **Railway.app**.
+
+### Local Startup
+1. `pip install -r requirements.txt`
+2. Create `.env` from the provided template.
+3. `python apps/telegram/bot.py`
+
+### Cloud Deployment (Railway)
+1. Link your GitHub repository to Railway.
+2. Railway will automatically detect the `Procfile` and `runtime.txt`.
+3. Add your `.env` variables to the Railway Dashboard.
+4. Deploy.
 
 ---
 *Built for the hustle. Optimized for the harvest.*
