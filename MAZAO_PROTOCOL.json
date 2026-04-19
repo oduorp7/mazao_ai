@@ -1,0 +1,36 @@
+{
+  "directive": "MAZAO_AI_PHASE_GATE_PROTOCOL",
+  "issued_by": "Chief Engineer / AI Architect",
+  "version": "1.0",
+  "timestamp": "2026-04-19",
+  "protocol_rules": {
+    "rule_1": "No phase starts until previous phase audit JSON is received and approved by Chief Engineer.",
+    "rule_2": "No file is touched unless explicitly listed in scope of current phase.",
+    "rule_3": "NOT_TO_TOUCH files are immutable: apps/agent/mpesa_parser.py and apps/tg_bot/db.py.",
+    "rule_4": "Every phase ends with Antigravity issuing a completion JSON using the PHASE_COMPLETION_TEMPLATE.",
+    "rule_5": "No new features, no refactors, no improvements outside stated scope.",
+    "rule_6": "If a blocker is encountered, Antigravity issues a BLOCKER_REPORT JSON and stops. Chief Engineer resolves before work resumes.",
+    "rule_7": "Sample/fake data must not exist in any user-facing code path after Phase 1.",
+    "rule_8": "No WhatsApp, no Daraja, no OCR work until Phase 3 gate is passed."
+  },
+  "phase_completion_template": {
+    "report_type": "PHASE_COMPLETION",
+    "phase_id": "<phase_id>",
+    "files_modified": ["<path>:<function> — <one line summary>"],
+    "files_created": ["<path> — <one line summary>"],
+    "files_deleted": [],
+    "tests_run": [{"name": "<test>", "result": "PASS|FAIL", "detail": "<detail>"}],
+    "verification_steps_completed": ["<step>"],
+    "known_issues": [],
+    "ready_for_chief_engineer_review": true
+  },
+  "blocker_report_template": {
+    "report_type": "BLOCKER",
+    "phase_id": "<phase_id>",
+    "blocker_description": "<what broke or is missing>",
+    "files_affected": [],
+    "attempted_resolution": "<what was tried>",
+    "requires_from_chief_engineer": "<decision or resource needed>",
+    "work_halted": true
+  }
+}
