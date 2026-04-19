@@ -417,3 +417,22 @@ PROVIDER_REGISTRATION_FAILED = "⚠️ *Payment Bridge offline*\nCould not regis
 
 LIVE_DATA_LABEL = "📡 *Live data via {provider}* ({count} txns, last: {last_txn_time})"
 
+
+# ── Phase 7: M-Pesa STK Push Billing ─────────────────────────────────────────
+
+UPGRADE_PROMPT = "💎 *Upgrade to Mazao AI Premium*\n\nChoose the plan that fits your business:\n\n1. *Mtu Wenyewe* (KES {mtu_price}/month)\n   ✅ Profit/Loss Reports\n   ✅ Utility Tracking\n\n2. *Biashara* (KES {biashara_price}/month)\n   ✅ Everything in Mtu Wenyewe\n   ✅ Daily AI Insights\n   ✅ Tax Compliance Dashboard"
+
+STK_PUSH_SENT = "📲 *STK Push Sent*\nA prompt has been sent to *{phone}* for *KES {amount}*. Please enter your M-Pesa PIN to complete payment.\n\n_This request will expire in 60 seconds._"
+
+PAYMENT_CONFIRMED = "🎉 *Payment Confirmed!*\n\nYour account is now active on the *{plan_name}* plan (KES {amount}).\n\nThank you for choosing Mazao AI! 🚀"
+
+PAYMENT_FAILED = "❌ *Payment Failed*\nWe couldn't process your M-Pesa payment. This could be due to a timeout or insufficient funds.\n\nTry again: /upgrade"
+
+UPGRADE_REQUIRED = "🔒 *Premium Feature*\n\nGenerating *{feature_name}* is only available on paid plans. Since your trial has expired, please upgrade to continue."
+
+TRIAL_REMINDER = "⏳ *Trial Active*: {days_remaining} days left."
+
+TRIAL_EXPIRY_WARNING = "⚠️ *Trial Ending Soon*\n\nYour free trial of Mazao AI Premium expires in *{days_remaining} days*. Upgrade now to keep your business insights flowing: /upgrade"
+
+TRIAL_EXPIRED = "🔴 *Trial Expired*\n\nYour Mazao AI Premium trial has ended. Your compliance reminders will stay active, but /report and /status now require a subscription.\n\nUpgrade here: /upgrade"
+
