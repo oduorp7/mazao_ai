@@ -238,3 +238,29 @@ I'm not sure what you mean by that.
 
 Type /help to see all commands, or ask me a question about your business finances.\
 """
+
+# ── Sprint 2: Individual & Statement Parsing ────────────────────────────────
+
+USER_TYPE_SELECT = "👋 *First, tell us who you are:*\n\nAre you managing a business, or do you want to track your individual KRA & SHA status?"
+
+INDIVIDUAL_ASK_NAME = "👤 Welcome! To get started, what is your *full name*?"
+
+INDIVIDUAL_ASK_KRA = "✅ Great, *{name}*! Now, what is your *KRA PIN*? (e.g. `A012345678B`)"
+
+INDIVIDUAL_ASK_EMPLOYMENT = "💼 What is your current *employment status*?\n\nThis helps me track the correct tax and SHA obligations for you."
+
+INDIVIDUAL_ASK_SHA = "🏥 Do you have an *SHA (Social Health Authority) number*?\n\nIf you have one, send it now. Otherwise, type /skip to provide it later."
+
+INDIVIDUAL_SETUP_COMPLETE = "🎉 *You're all set, {name}!*\n\nI'll track your personal KRA deadlines and SHA reminders.\n\nType /mystatus anytime to see your upcoming obligations."
+
+MYSTATUS_HEADER = "👤 *Personal Status — {name}*\nStatus: {status}\n\n*Upcoming Obligations:*\n"
+
+MYSTATUS_OBLIGATION_ROW = "{icon} *{name}* — Due {due_date}\n   {description}\n   Days left: {days_left}\n\n"
+
+UNSUPPORTED_FILE_FORMAT = "⚠️ *Unsupported File Format*\n\nPlease send a .csv (from M-Pesa app) or forward your M-Pesa SMS text. PDFs are also supported if they contain text."
+
+STATEMENT_RECEIVED_PARSING = "📥 *Statement received!*\n\nI'm parsing your transactions now. Please wait..."
+
+STATEMENT_PARSE_FAILED = "❌ *Parsing Failed*\n\nI couldn't find any valid transactions in that file. Please ensure it is a standard M-Pesa CSV or PDF."
+
+STATEMENT_PARSE_SUCCESS = "✅ *Parsing Successful!*\n\nLoaded *{count}* transactions. Generating your business report now..."

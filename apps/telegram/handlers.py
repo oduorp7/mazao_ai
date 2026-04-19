@@ -20,7 +20,14 @@ import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, BotCommand
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
@@ -73,9 +80,79 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, M.HELP)
         return
 
-    # Begin onboarding
-    db.set_conv_state(tid, "awaiting_name")
-    await _reply(update, M.WELCOME, reply_markup=ReplyKeyboardRemove())
+    # Sprint 2: User Type selection
+    keyboard = [
+        [
+            InlineKeyboardButton("🏪 Business Owner", callback_data="type_business"),
+            InlineKeyboardButton("👤 Individual", callback_data="type_individual"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await _reply(update, M.USER_TYPE_SELECT, reply_markup=reply_markup)
+
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the user type selection from the inline keyboard."""
+    query = update.callback_query
+    await query.answer()
+    
+    tid = query.from_user.id
+    data = query.data
+    
+    log.info("callback_received", telegram_id=tid, data=data)
+    
+    if data == "type_business":
+        db.set_conv_state(tid, "awaiting_name", data={"user_type": "business"})
+        # Create tenant row if not exists
+        if not db.get_tenant(tid):
+            db.create_tenant(
+                telegram_id=tid,
+                telegram_username=query.from_user.username,
+                full_name=query.from_user.full_name,
+            )
+        db.update_tenant(tid, {"user_type": "business"})
+        await query.edit_message_text(M.WELCOME)
+        
+    elif data == "type_individual":
+        db.set_conv_state(tid, "awaiting_individual_name", data={"user_type": "individual"})
+        # Create tenant row if not exists
+        if not db.get_tenant(tid):
+            db.create_tenant(
+                telegram_id=tid,
+                telegram_username=query.from_user.username,
+                full_name=query.from_user.full_name,
+            )
+        db.update_tenant(tid, {"user_type": "individual"})
+        await query.edit_message_text(M.INDIVIDUAL_ASK_NAME)
+
+    elif data.startswith("emp_"):
+        emp_status = data.replace("emp_", "")
+        db.update_tenant(tid, {"employment_status": emp_status})
+        db.set_conv_state(tid, "awaiting_sha")
+        
+        status_readable = emp_status.replace("_", " ").title()
+        await query.edit_message_text(
+            f"✅ Status set to: *{status_readable}*\n\n{M.INDIVIDUAL_ASK_SHA}", 
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+# ── /skip ───────────────────────────────────────────────────────────────────
+
+async def cmd_skip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles skipping optional steps like SHA number."""
+    tid = _tg_id(update)
+    conv = db.get_conv_state(tid)
+    state = conv["state"] if conv else "idle"
+    
+    if state == "awaiting_sha":
+        db.update_tenant(tid, {"status": "active"})
+        db.clear_conv_state(tid)
+        tenant = db.get_tenant(tid)
+        await _reply(update, M.INDIVIDUAL_SETUP_COMPLETE.format(name=tenant.get("full_name", "")))
+        return
+
+    await _reply(update, "Nothing to skip right now.")
 
 
 # ── /help ─────────────────────────────────────────────────────────────────────
@@ -86,6 +163,45 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, M.NOT_REGISTERED)
         return
     await _reply(update, M.HELP)
+
+
+# ── /mystatus ─────────────────────────────────────────────────────────────────
+
+async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Displays the upcoming obligations for an individual user."""
+    tid = _tg_id(update)
+    tenant = db.get_tenant(tid)
+    
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+        
+    if tenant.get("user_type") != "individual":
+        await _reply(update, "This command is only available for Individual accounts.")
+        return
+
+    obligations = db.get_individual_obligations(tid)
+    
+    text = M.MYSTATUS_HEADER.format(
+        name=tenant.get("full_name", _username(update)),
+        status=tenant.get("employment_status", "unknown").title().replace("_", " ")
+    )
+    
+    today = datetime.utcnow()
+    
+    for ob in obligations:
+        days_left = (ob["due_date"].date() - today.date()).days
+        icon = "📋" if "Return" in ob["name"] else "🏥"
+        
+        text += M.MYSTATUS_OBLIGATION_ROW.format(
+            icon=icon,
+            name=ob["name"],
+            due_date=ob["due_date"].strftime("%d %b %Y"),
+            description=ob["description"],
+            days_left=f"{days_left} days" if days_left >= 0 else "OVERDUE"
+        )
+        
+    await _reply(update, text)
 
 
 # ── /report — trigger pipeline now ───────────────────────────────────────────
@@ -120,10 +236,72 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles uploaded statement files (CSV, PDF, TXT)."""
+    tid = _tg_id(update)
+    tenant = db.get_tenant(tid)
+    
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+
+    doc = update.message.document
+    if doc.file_size > 10 * 1024 * 1024:
+        await _reply(update, "⚠️ File is too large. Max size is 10MB.")
+        return
+
+    mime = doc.mime_type
+    ext = Path(doc.file_name).suffix.lower()
+    
+    fmt = None
+    if mime == "text/csv" or ext == ".csv":
+        fmt = "csv"
+    elif mime == "application/pdf" or ext == ".pdf":
+        fmt = "pdf_text"
+    elif mime == "text/plain" or ext == ".txt":
+        fmt = "sms"
+    
+    if not fmt:
+        await _reply(update, M.UNSUPPORTED_FILE_FORMAT)
+        return
+
+    await _reply(update, M.STATEMENT_RECEIVED_PARSING)
+
+    try:
+        file = await context.bot.get_file(doc.file_id)
+        file_bytes = await file.download_as_bytearray()
+        
+        from mpesa_parser import parse
+        txs = parse(bytes(file_bytes), fmt)
+        
+        if not txs:
+            await _reply(update, M.STATEMENT_PARSE_FAILED)
+            return
+
+        await _reply(update, M.STATEMENT_PARSE_SUCCESS.format(count=len(txs)))
+        
+        # Run pipeline with extracted transactions
+        context.application.create_task(
+            _run_pipeline_and_reply(
+                update, 
+                context, 
+                tenant, 
+                custom_transactions=txs,
+                trigger_source="telegram_document"
+            )
+        )
+        
+    except Exception as exc:
+        log.exception("document_parsing_failed", telegram_id=tid, error=str(exc))
+        await _reply(update, M.STATEMENT_PARSE_FAILED)
+
+
 async def _run_pipeline_and_reply(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     tenant: dict,
+    custom_transactions: Optional[list] = None,
+    trigger_source: str = "telegram_command",
 ) -> None:
     """
     Runs the agent pipeline and sends the report back.
@@ -132,20 +310,18 @@ async def _run_pipeline_and_reply(
     tid = tenant["telegram_id"]
 
     try:
-        # Import here to avoid circular import at startup
         from pipeline import run_pipeline
         from state import RawTransaction, TransactionType
 
-        # In production: fetch real transactions from Daraja API
-        # For now: use sample data if no real integration yet
-        sample_txs = _get_sample_transactions(tenant)
+        # Use passed transactions or fall back to sample/real fetch
+        txs = custom_transactions if custom_transactions is not None else _get_sample_transactions(tenant)
 
         result = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: run_pipeline(
                 tenant_id=str(tenant["id"]),
-                raw_transactions=sample_txs,
-                triggered_by="telegram_command",
+                raw_transactions=txs,
+                triggered_by=trigger_source,
             ),
         )
 
@@ -426,6 +602,52 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # ── Onboarding state machine ──────────────────────────────────────────
 
+    # ── Individual Onboarding ──────────────────────────────────────────
+
+    if state == "awaiting_individual_name":
+        if len(text) < 2:
+            await _reply(update, "Please enter your full name (at least 2 characters).")
+            return
+        db.set_conv_state(tid, "awaiting_individual_kra", data={"full_name": text})
+        db.update_tenant(tid, {"full_name": text})
+        await _reply(update, M.INDIVIDUAL_ASK_KRA.format(name=text))
+        return
+
+    if state == "awaiting_individual_kra":
+        # Validate KRA PIN format: A012345678B
+        if not re.match(r"^[A-Za-z]\d{9}[A-Za-z]$", text):
+            await _reply(
+                update,
+                "⚠️ That doesn't look like a valid KRA PIN.\n\nFormat: `A012345678B` (letter, 9 digits, letter)",
+            )
+            return
+        db.set_conv_state(tid, "awaiting_employment")
+        db.update_tenant(tid, {"kra_pin": text.upper()})
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🏢 Employed", callback_data="emp_employed"),
+                InlineKeyboardButton("🛠️ Self-Employed", callback_data="emp_self_employed"),
+            ],
+            [InlineKeyboardButton("🎓 Unemployed / Student", callback_data="emp_unemployed")]
+        ]
+        await _reply(update, M.INDIVIDUAL_ASK_EMPLOYMENT, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if state == "awaiting_sha":
+        # Validate SHA: digits only
+        if not re.match(r"^\d+$", text):
+            await _reply(update, "Please send a valid SHA number (digits only), or type /skip.")
+            return
+
+        db.update_tenant(tid, {"sha_number": text, "status": "active"})
+        db.clear_conv_state(tid)
+        tenant = db.get_tenant(tid)
+        await _reply(update, M.INDIVIDUAL_SETUP_COMPLETE.format(name=tenant.get("full_name", "")))
+        return
+
+    # ── Business Onboarding ────────────────────────────────────────────
+
     if state == "awaiting_name":
         if len(text) < 2:
             await _reply(update, "Please enter your business name (at least 2 characters).")
@@ -523,5 +745,7 @@ BOT_COMMANDS = [
     BotCommand("status", "Account & subscription info"),
     BotCommand("stop",   "Pause daily reports"),
     BotCommand("resume", "Resume daily reports"),
+    BotCommand("mystatus", "View your individual status"),
+    BotCommand("skip",   "Skip the current optional step"),
     BotCommand("help",   "Show all commands"),
 ]

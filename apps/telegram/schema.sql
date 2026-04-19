@@ -81,4 +81,9 @@ CREATE OR REPLACE VIEW revenue_summary AS
         COUNT(*) as tenant_count
     FROM tenants
     GROUP BY plan, status
-    ORDER BY plan;
+-- ── Migration: Sprint 2 ──────────────────────────────────────────────────
+-- Adds support for Individuals and SHA/Social Health Insurance
+
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS user_type TEXT DEFAULT 'business'; 
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS sha_number TEXT; 
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS employment_status TEXT; -- employed | self_employed | unemployed

@@ -13,7 +13,7 @@ Tables expected (run schema.sql to create):
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from supabase import create_client, Client
@@ -154,3 +154,76 @@ def get_latest_report(tenant_id: str) -> Optional[dict]:
         .execute()
     )
     return resp.data
+
+
+def update_tenant_sha(telegram_id: int, sha_number: str) -> dict:
+    """Update the SHA number for an individual tenant."""
+    return update_tenant(telegram_id, {"sha_number": sha_number})
+
+
+def get_tenants_by_type(user_type: str) -> List[dict]:
+    """Return all tenants of a specific type (business/individual)."""
+    resp = (
+        get_client()
+        .table("tenants")
+        .select("*")
+        .eq("user_type", user_type)
+        .execute()
+    )
+    return resp.data or []
+
+
+def get_individual_obligations(telegram_id: int) -> List[dict]:
+    """
+    Returns a list of calculated obligations for an individual.
+    This logic inverts the 'business' perspective to personal KRA/SHA deadlines.
+    """
+    tenant = get_tenant(telegram_id)
+    if not tenant or tenant.get("user_type") != "individual":
+        return []
+
+    status = tenant.get("employment_status", "unemployed")
+    today = datetime.utcnow()
+    
+    # Income Tax Return: June 30
+    return_year = today.year
+    if today.month > 6:
+        return_year += 1
+    return_due = datetime(return_year, 6, 30)
+    
+    obligations = [
+        {
+            "name": "Annual Income Tax Return",
+            "due_date": return_due,
+            "description": "Declaration of income for the previous year.",
+            "penalty": "KES 2,000 or 5% of tax due"
+        }
+    ]
+
+    if status == "unemployed":
+        obligations[0]["name"] = "Nil Return"
+        obligations[0]["description"] = "Mandatory zero-income declaration to avoid penalties."
+
+    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+
+    if status == "employed":
+        # SHA: 9th of next month
+        sha_due = next_month.replace(day=9)
+        obligations.append({
+            "name": "SHA Contribution",
+            "due_date": sha_due,
+            "description": "2.75% of gross salary. Remind employer to verify.",
+            "penalty": "Interest on late payment"
+        })
+
+    if status == "self_employed":
+        # NSSF: 15th of next month
+        nssf_due = next_month.replace(day=15)
+        obligations.append({
+            "name": "NSSF Tier 1 + 2",
+            "due_date": nssf_due,
+            "description": "Tier 1: KES 420. Tier 2: 6% of pensionable pay.",
+            "penalty": "Compounded interest"
+        })
+
+    return obligations

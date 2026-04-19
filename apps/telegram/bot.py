@@ -41,6 +41,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ContextTypes,
+    CallbackQueryHandler,
 )
 from telegram.constants import ParseMode
 
@@ -58,7 +59,11 @@ from handlers import (
     cmd_status,
     cmd_stop,
     cmd_resume,
+    cmd_skip,
+    cmd_mystatus,
     handle_message,
+    handle_callback,
+    handle_document,
     BOT_COMMANDS,
 )
 from scheduler import create_scheduler
@@ -134,11 +139,19 @@ async def main() -> None:
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("resume", cmd_resume))
+    app.add_handler(CommandHandler("skip", cmd_skip))
+    app.add_handler(CommandHandler("mystatus", cmd_mystatus))
 
     # All non-command text → conversation handler
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
+
+    # Document upload handle
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+
+    # Inline button clicks
+    app.add_handler(CallbackQueryHandler(handle_callback))
 
     # Global error handler
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
