@@ -1,77 +1,95 @@
 # Mazao AI — Strategic Roadmap & Architecture Guide
+Version 1.0  |  April 2026
 
-This document distills the core observations and strategic principles to guide the evolution of Mazao AI from a "bookkeeper" to a "Financial Awareness + Prediction Layer for Kenyan Life."
+This document is the **definitive Source of Truth** for the Mazao AI platform. It distills the core vision, tactical roadmap, and operational requirements to transform Mazao AI into the financial nervous system of Kenya.
 
-## 1. The Core Vision: "Autopilot for Kenyan Life"
+---
 
-Mazao AI is not just accounting software; it is a system that **predicts and prevents everyday financial stress.** Its value lies in solving real-world consequences (penalties, service disruptions, out-of-stock essentials).
+## 1. Executive Summary: "Predict. Prevent. Protect."
 
-## 2. The Three-Engine Architecture
+Mazao AI is Kenya’s first unified financial intelligence platform built natively on M-Pesa, KRA, and SHA infrastructure. We provide a predictive financial autopilot that solves real-world consequences: **penalties, service disruptions, and cash shortfalls.**
 
-| Engine | Focus | User Value | Data Source |
-|:---|:---|:---|:---|
-| **Compliance** | KRA Rules | Avoid Penalties | Rules + PIN |
-| **Accounting-Lite** | M-Pesa Flow | Cashflow Visibility | M-Pesa statements/SMS |
-| **Prediction** | Utility Consumption | Prevent Disruption | Usage trends (Tokens/Gas) |
+> [!IMPORTANT]
+> **The Core Vision**: We aren't building "bookkeeping software." We are building a **Financial Awareness + Prediction Layer** for everyday Kenyan life.
+
+---
+
+## 2. Product Philosophy
+
+### Engine 1: Compliance (Acquisition)
+Built on fear of penalties. It must be simple, instant, and automated.
+- **Value**: "Avoid KRA/SHA fines."
+- **Onboarding Target**: < 2 minutes.
+
+### Engine 2: Cash Awareness (Retention)
+Built on daily habit. Uses M-Pesa statements and live feeds to show "where the money goes."
+- **Value**: "Know your profit/spend instantly."
+
+### Engine 3: Life Prediction (Virality)
+The "Wow" factor. Predicts when electricity tokens, gas, or cash will run out.
+- **Value**: "Never be caught off-guard."
 
 ---
 
 ## 3. Implementation Principles
 
-### Layering, Not Merging
-Do not force full accounting at the start. SMEs will drop off.
-- **Start with Compliance**: Low friction, high urgency.
-- **Introduce Visibility**: Progressive onboarding for M-Pesa tracking.
-- **Unlock Insights**: Predictive alerts as data accumulates.
-
-### Estimates > Perfection
-Imperfect data with clear "Estimate" labeling is better than no data.
-- Use M-Pesa inflows for revenue.
-- Use rough heuristics for expense categories.
-- Use ranges for predictions (e.g., "Electricity will last 2-4 days").
+- **Layering, Not Merging**: Lead with low-friction compliance. Layer accounting and predictions progressively.
+- **Estimates Over Perfection**: Standard Mode (Estimates) is better than no data. Clearly label imperfect data as "Estimates."
+- **Minimal Data footprint**: Collect only operationally necessary, low-sensitivity data. No KRA PINs required for first-value delivery.
 
 ---
 
-## 4. Phase-Specific Roadmap
+## 4. User Types & Onboarding
 
-### Phase 1: The Trust Foundation (Completed)
-- [x] KRA Deadline Engine (VAT, PAYE, NSSF)
-- [x] Basic M-Pesa Statement Parsing (CSV)
-- [x] Individual vs. Business Onboarding
-- [x] Rule-based "Standard Mode" fallback
-
-### Phase 2: The Persistence Layer (Immediate Next)
-- **Feature**: **Electricity Token Tracker & Prediction**
-  - Input: Token amount + past history.
-  - Logic: `remaining_units / avg_daily_usage`.
-- **Feature**: **Gas Depletion Predictor**
-  - Heuristics based on cylinder size (6kg/13kg) + household size.
-- **Workflow**: Automated SMS parsing (forwarding) to feed the engine.
-
-### Phase 3: The Insight Layer (Premium)
-- **Feature**: **Cashflow Prediction**
-  - "At current spending, you'll need Fuliza in 3 days."
-- **Feature**: **Smart Reconciliation**
-  - AI-assisted categorization with high confidence thresholds.
-- **Feature**: **Credit Readiness Dashboard**
-  - Behavioral insights formatted for potential lending partners.
+| User Type | Profile | Key Priority |
+|:---|:---|:---|
+| **SME Business Owner** | Small/Medium shop owners. | Tax compliance & Profit visibility. |
+| **Employed Individual** | Formal sector employees. | SHA/NSSF tracking & Monthly spend logs. |
+| **Household Manager** | Residential power/gas users. | Utility prediction & Bill reminders. |
 
 ---
 
-## 5. Data & UX Strategy
+## 5. Detailed Roadmap (Sprints 1–6)
 
-### Low-Friction Onboarding (The 2-Minute Rule)
-- Step 1: User Type (Business vs. Individual).
-- Step 2: Instant "Upcoming Deadlines" view (No KRA PIN required initially).
-- Step 3: Optional PIN/Till entry for "Deeper Visibility."
-
-### Data Acquisition
-- Encourage forwarding M-Pesa and KPLC SMS messages directly to the bot.
-- Use `mpesa_parser.py` as the central ingestion hub for all formats.
+| Sprint | Timeline | Deliverables | Definition of Done |
+|:---|:---|:---|:---|
+| **Sprint 1** | **Completed** | Telegram bot live, Onboarding flow, Supabase DB. | Bot responds to `/start`. |
+| **Sprint 2** | **In Progress** | M-Pesa Statement Parser (CSV/PDF), Individual Mode, SHA/NSSF engine. | Real statement produces correct numbers. |
+| **Sprint 3** | Week 5–6 | **Utility Prediction (KPLC Tokens)**, Fuliza trackers, Anthropic Billing resolution. | Electricity depletion accurate within 2 days. |
+| **Sprint 4** | Week 7–8 | Cooking gas estimator, Water bill tracker, Safaricom Paybill application. | Paybill application submitted for production. |
+| **Sprint 5** | Week 9–12 | **Daraja C2B Webhook Integration**. Real-time transaction feed replaces file upload. | Live transactions reach bot in < 30s. |
+| **Sprint 6** | Month 4–6 | Regional Expansion (Uganda/Tanzania), Swahili support, Credit scoring layer. | First paying customer outside Kenya. |
 
 ---
 
-## 6. Your Unfair Advantage
-Most accounting tools focus on reports. Mazao AI combines **money + real-life consumption + deadlines**.
+## 6. Monetisation Tiers
 
-This is not just bookkeeping software. It is a **financial awareness + prediction layer for everyday Kenyan life**.
+| Feature | **Msingi** (Free) | **Mtu Wenyewe** (K500) | **Biashara** (K2,500) |
+|:---|:---|:---|:---|
+| **Target** | Public / Entry | Individual | SME Owner |
+| **KRA Reminders** | Basic | Personalised | Full + Penalty Estimates |
+| **M-Pesa Reports** | No | Weekly Spend | **Daily (7:00 AM)** |
+| **Utility Prediction** | No | Yes | Yes |
+| **AI Insights** | No | No | **Claude 3.5 Sonnet Reports** |
+
+---
+
+## 7. Legal & Operational Requirements
+
+### Pre-Launch Checklist
+1. **ODPC Registration**: Register as a Data Controller with the Office of the Data Protection Commissioner Kenya ([odpc.go.ke](https://odpc.go.ke)).
+2. **Privacy Policy**: Plain-language policy detailing what we collect and why.
+3. **Safaricom Paybill**: Apply for a business Paybill to enable Daraja production access.
+4. **Daraja Production Support**: Finalize verification for C2B live feeds.
+
+---
+
+## 8. Current Action Items (Urgent)
+
+- [ ] **Top up Anthropic Billing**: Unlock "Premium Mode" for Claude AI reports.
+- [ ] **Deploy to Railway.app**: Transfer from Local Workspace to 24/7 cloud hosting.
+- [/] **Sprint 2 Execution**: Complete M-Pesa Parser and Individual Onboarding (Ongoing).
+- [ ] **Publish Privacy Policy**: Notion/Markdown page linked to bot greeting.
+
+---
+**Mazao AI** — *Predict. Prevent. Protect.*
