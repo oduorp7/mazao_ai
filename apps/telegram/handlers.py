@@ -98,6 +98,11 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await _reply(update, M.NOT_REGISTERED)
         return
 
+    # FAANG-grade immediate feedback
+    msg = await update.message.reply_text("🔄 *Mazao AI is analyzing your transactions...*\nPlease wait a moment.")
+    
+    # Run the pipeline (this might take 5-10s)
+
     if not tenant.get("mpesa_till"):
         await _reply(
             update,

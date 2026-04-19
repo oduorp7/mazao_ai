@@ -29,20 +29,22 @@ def get_client() -> Client:
         _client = create_client(url, key)
     return _client
 
-
 # ── Tenant helpers ────────────────────────────────────────────────────────────
 
 def get_tenant(telegram_id: int) -> Optional[dict]:
     """Return tenant row or None if not registered."""
-    resp = (
-        get_client()
-        .table("tenants")
-        .select("*")
-        .eq("telegram_id", telegram_id)
-        .maybe_single()
-        .execute()
-    )
-    return resp.data
+    try:
+        resp = (
+            get_client()
+            .table("tenants")
+            .select("*")
+            .eq("telegram_id", telegram_id)
+            .maybe_single()
+            .execute()
+        )
+        return resp.data if resp else None
+    except Exception:
+        return None
 
 
 def create_tenant(
@@ -97,15 +99,18 @@ def get_all_active_tenants() -> list[dict]:
 # ── Conversation state (multi-step flows) ─────────────────────────────────────
 
 def get_conv_state(telegram_id: int) -> Optional[dict]:
-    resp = (
-        get_client()
-        .table("conversations")
-        .select("*")
-        .eq("telegram_id", telegram_id)
-        .maybe_single()
-        .execute()
-    )
-    return resp.data
+    try:
+        resp = (
+            get_client()
+            .table("conversations")
+            .select("*")
+            .eq("telegram_id", telegram_id)
+            .maybe_single()
+            .execute()
+        )
+        return resp.data if resp else None
+    except Exception:
+        return None
 
 
 def set_conv_state(telegram_id: int, state: str, data: dict | None = None) -> None:

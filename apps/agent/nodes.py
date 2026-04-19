@@ -224,20 +224,25 @@ def _call_claude_categorize(transactions: list[dict], client: Anthropic) -> list
 
     tx_text = json.dumps(transactions, indent=2, default=str)
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4096,
-        system=CATEGORIZATION_SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": f"Categorise these transactions:\n\n{tx_text}",
-            }
-        ],
-    )
-
-    raw = response.content[0].text.strip()
-    return json.loads(raw)
+    try:
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            max_tokens=4096,
+            system=CATEGORIZATION_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Categorise these transactions:\n\n{tx_text}",
+                }
+            ],
+        )
+        raw = response.content[0].text.strip()
+        return json.loads(raw)
+    except Exception as e:
+        if "credit balance is too low" in str(e).lower() or "400" in str(e):
+            log.warning("billing_blocker_detected", error=str(e))
+            raise  # Let the node handle the fallback
+        raise
 
 
 def _rule_based_categorize(tx: Any) -> dict:
@@ -586,13 +591,18 @@ Write in {language}."""
     reraise=False,
 )
 def _call_claude_report(prompt: str, language: str, client: Anthropic) -> str:
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1024,
-        system=REPORT_SYSTEM_PROMPT.format(language=language),
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text.strip()
+    try:
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            max_tokens=1024,
+            system=REPORT_SYSTEM_PROMPT.format(language=language),
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        if "credit balance is too low" in str(e).lower():
+            log.warning("billing_blocker_report_fallback", language=language)
+        raise
 
 
 def _build_report_prompt(state: AgentState) -> str:
@@ -602,21 +612,21 @@ def _build_report_prompt(state: AgentState) -> str:
 
     next_ob = obs[0] if obs else None
     next_ob_str = (
-        f"{next_ob.obligation_type.value} due in {next_ob.days_until_due} days "
-        f"(est. KES {next_ob.estimated_amount:,.0f})"
+        f"({next_ob.obligation_type.value} due in {next_ob.days_until_due} days, "
+        f"est. KES {next_ob.estimated_amount:,.0f})"
         if next_ob else "No immediate obligations"
     )
 
     return f"""
 Business report data:
 - Period: {state.report_period_start} to {state.report_period_end}
-- Total income: KES {r.total_income:,.0f if r else 0}
-- Total expenses: KES {r.total_expenses:,.0f if r else 0}
-- Net profit: KES {r.net_profit:,.0f if r else 0}
+- Total income: KES {(r.total_income if r else 0):,.0f}
+- Total expenses: KES {(r.total_expenses if r else 0):,.0f}
+- Net profit: KES {(r.net_profit if r else 0):,.0f}
 - Transactions: {r.transaction_count if r else 0}
 - Flagged for review: {r.flagged_count if r else 0}
 - Top customers: {r.top_customers[:3] if r else []}
-- VAT payable this month: KES {v.net_vat_payable:,.0f if v else 0}
+- VAT payable this month: KES {(v.net_vat_payable if v else 0):,.0f}
 - Most urgent KRA obligation: {next_ob_str}
 - Errors during processing: {state.errors}
 
@@ -653,16 +663,19 @@ def generate_report(state: AgentState) -> dict:
             )
             r = state.reconciliation
             v = state.vat_return
+            
+            # FAANG-Grade Template Fallback
             report_en = (
-                f"📊 *Business Report*\n\n"
-                f"💰 *Income:* KES {r.total_income:,.0f if r else 0}\n"
-                f"💸 *Expenses:* KES {r.total_expenses:,.0f if r else 0}\n"
-                f"📈 *Profit:* KES {r.net_profit:,.0f if r else 0}\n"
-                f"📋 *VAT due:* KES {v.net_vat_payable:,.0f if v else 0}\n\n"
-                f"⚠️ Flagged: {r.flagged_count if r else 0} transactions need review.\n\n"
-                f"Reply *HELP* for details."
+                f"📊 *Mazao AI Business Report (Standard Mode)*\n\n"
+                f"Your AI engine is currently in Maintenance Mode, but I have calculated your raw metrics directly:\n\n"
+                f"💰 *Total Income:* KES {(r.total_income if r else 0):,.0f}\n"
+                f"💸 *Total Expenses:* KES {(r.total_expenses if r else 0):,.0f}\n"
+                f"📈 *Net Profit:* KES {(r.net_profit if r else 0):,.0f}\n"
+                f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.0f}\n\n"
+                f"⚠️ *Alert:* {r.flagged_count if r else 0} transactions need review.\n\n"
+                f"Next Action: Please check your Anthropic dashboard to re-enable Premium Insights."
             )
-            report_sw = report_en  # fallback — improve later
+            report_sw = report_en  # fallbackSwahili Template could be added here
 
         log.info(
             "node_success",

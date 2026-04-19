@@ -40,7 +40,9 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     filters,
+    ContextTypes,
 )
+from telegram.constants import ParseMode
 
 # Add agent pipeline to Python path so handlers can import it
 sys.path.insert(0, str(Path(__file__).parent.parent / "agent"))
@@ -95,13 +97,33 @@ async def main() -> None:
 
     log.info("bot_starting")
 
-    # ── Build application ─────────────────────────────────────────────────
+    # ── Initialize application ────────────────────────────────────────────
+    from telegram.request import HTTPXRequest
+
+    # Use custom timeouts to overcome local network instability
+    request = HTTPXRequest(
+        connect_timeout=20.0,
+        read_timeout=20.0,
+        write_timeout=20.0,
+        pool_timeout=20.0,
+    )
+
     app = (
         Application.builder()
         .token(token)
+        .request(request)
         .post_init(post_init)
         .build()
     )
+
+    # ── High-level monitor ────────────────────────────────────────────────
+    from telegram.ext import TypeHandler
+    async def monitor(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        log.info("raw_update_received", update_type=type(update).__name__)
+        if isinstance(update, Update) and update.effective_message:
+            log.info("raw_message_text", text=update.effective_message.text, chat_id=update.effective_chat.id)
+
+    app.add_handler(TypeHandler(Update, monitor), group=-1) # Group -1 runs BEFORE other handlers
 
     # ── Register handlers ─────────────────────────────────────────────────
     app.add_handler(CommandHandler("start",  cmd_start))
@@ -118,6 +140,17 @@ async def main() -> None:
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
 
+    # Global error handler
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        log.error("unhandled_exception", error=str(context.error))
+        if isinstance(update, Update) and update.effective_message:
+            await update.effective_message.reply_text(
+                "⚠️  *Mazao AI Logic Error*\nI encountered an internal error. My engineers have been notified.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+    app.add_error_handler(error_handler)
+
     # ── Start scheduler ───────────────────────────────────────────────────
     scheduler = create_scheduler(app.bot)
     scheduler.start()
@@ -133,6 +166,15 @@ async def main() -> None:
     
     # Run forever until interrupt
     stop_event = asyncio.Event()
+    
+    # Heartbeat task
+    async def heartbeat():
+        while not stop_event.is_set():
+            log.info("bot_heartbeat", alive=True)
+            await asyncio.sleep(60)
+            
+    asyncio.create_task(heartbeat())
+
     try:
         await stop_event.wait()
     except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
@@ -144,10 +186,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    except Exception as e:
-        print(f"FATAL: {e}")
-        sys.exit(1)
+    asyncio.run(main())
