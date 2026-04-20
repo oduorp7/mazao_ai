@@ -199,5 +199,38 @@ CREATE INDEX IF NOT EXISTS idx_tenants_till_number ON tenants(till_number);
 
 -- RLS
 ALTER TABLE live_transactions ENABLE ROW LEVEL SECURITY;
+
 CREATE POLICY "service_all_live_transactions" ON live_transactions
+    FOR ALL USING (auth.role() = 'service_role');
+
+-- ── Migration: Phase 7 (P7-T1) ────────────────────────────────────────────────
+-- Monetisation & Trial Management
+
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_active BOOLEAN DEFAULT false;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS phone_number TEXT; -- For payment contact
+
+-- Refine plan enum/defaults if not already robust
+ALTER TABLE tenants ALTER COLUMN plan SET DEFAULT 'free';
+
+CREATE TABLE IF NOT EXISTS payment_requests (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id           UUID REFERENCES tenants(id),
+    amount              NUMERIC NOT NULL,
+    phone_number        TEXT NOT NULL,
+    account_ref         TEXT NOT NULL,
+    intasend_invoice_id TEXT, -- Intasend's unique invoice identifier
+    status              TEXT DEFAULT 'pending', -- pending | confirmed | failed
+    created_at          TIMESTAMPTZ DEFAULT now(),
+    confirmed_at        TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_pay_req_tenant_id ON payment_requests(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_pay_req_intasend_id ON payment_requests(intasend_invoice_id);
+CREATE INDEX IF NOT EXISTS idx_pay_req_status ON payment_requests(status);
+
+-- RLS for payment_requests
+ALTER TABLE payment_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_all_payment_requests" ON payment_requests
     FOR ALL USING (auth.role() = 'service_role');

@@ -238,6 +238,13 @@ async def main() -> None:
     async def payment_webhook(request):
         """P6A2-T2: Provider-agnostic payment receiver with challenge validation."""
         try:
+            # Handle GET challenge (Intasend Handshake)
+            if request.method == "GET":
+                challenge = request.query.get("challenge")
+                if challenge:
+                    return web.Response(text=challenge)
+                return web.Response(text="No challenge", status=400)
+
             payload = await request.json()
 
             # ── Webhook Challenge Validation (P6A2 Addendum) ─────────────
@@ -251,25 +258,25 @@ async def main() -> None:
                              received=incoming_challenge[:6] + "...")
                     return web.Response(text="Unauthorized", status=401)
                 log.info("webhook_challenge_validated")
-            # If challenge field absent (sandbox test) — proceed normally
-
+            
             from apps.payments import get_provider
             provider = get_provider()
             parsed = await provider.handle_webhook(payload)
 
             if parsed:
-                # Fire-and-forget processing to keep response < 5s
+                # Fire-and-forget processing
                 asyncio.create_task(process_live_transaction(app.bot, parsed))
 
             return web.Response(text="OK", status=200)
         except Exception as e:
             log.error("webhook_handler_error", error=str(e))
-            return web.Response(text="OK", status=200) # Always 200 for providers
+            return web.Response(text="OK", status=200)
 
     health_app = web.Application()
     health_app.router.add_get("/health", health_check)
+    health_app.router.add_get("/payments/confirm", payment_webhook) # Handshake
+    health_app.router.add_post("/payments/confirm", payment_webhook) # Webhook
     health_app.router.add_post("/payments/webhook", payment_webhook)
-    health_app.router.add_post("/payments/confirm", payment_webhook)
     
     runner = web.AppRunner(health_app)
     await runner.setup()
@@ -300,21 +307,64 @@ if __name__ == "__main__":
 
 
 async def process_live_transaction(bot, parsed):
-    """P6-T2: Matches transaction to tenant and notifies them."""
+    """P6-T2 & P7-T5: Routes transaction to tenant or subscription processor."""
     try:
         from apps.tg_bot.db import get_client
         import apps.tg_bot.messages as M
         
         db = get_client()
         
-        # 1. Match Tenant: MSISDN (Phone) or Till Number (bill_ref used by AT sandbox)
-        # Check till_number first
+        # ── 1. Check for Subscription Payment (MAZAO- prefix) ───────────────────
+        if parsed.bill_ref and parsed.bill_ref.startswith("MAZAO-"):
+            log.info("subscription_payment_detected", ref=parsed.bill_ref, amount=parsed.amount)
+            
+            # Match via Account Ref
+            pr_resp = db.table("payment_requests").select("*").eq("account_ref", parsed.bill_ref).eq("status", "pending").maybe_single().execute()
+            if pr_resp and pr_resp.data:
+                request_data = pr_resp.data
+                tenant_id = request_data["tenant_id"]
+                amount = float(parsed.amount)
+                
+                # Update Payment Request
+                db.table("payment_requests").update({
+                    "status": "confirmed",
+                    "confirmed_at": datetime.utcnow().isoformat()
+                }).eq("id", request_data["id"]).execute()
+                
+                # Determine Plan
+                new_plan = "biashara" if amount >= 2500 else "mtu_wenyewe"
+                
+                # Update Tenant
+                db.table("tenants").update({
+                    "plan": new_plan,
+                    "subscription_active": True,
+                    "trial_started_at": None, # End trial logic upon payment
+                    "trial_ends_at": None
+                }).eq("id", tenant_id).execute()
+                
+                # Notify User
+                # Get tenant telegram_id
+                t_resp = db.table("tenants").select("telegram_id").eq("id", tenant_id).maybe_single().execute()
+                if t_resp and t_resp.data:
+                    await bot.send_message(
+                        chat_id=t_resp.data["telegram_id"],
+                        text=M.PAYMENT_CONFIRMED.format(
+                            plan_name=new_plan.title().replace("_", " "),
+                            amount=parsed.amount
+                        ),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                return
+            else:
+                log.warn("subscription_payment_unmatched", ref=parsed.bill_ref)
+
+        # ── 2. Match Tenant for Live Feed (Regular Payment) ──────────────────
         tenant = None
         resp = db.table("tenants").select("*").eq("till_number", parsed.bill_ref).maybe_single().execute()
         if resp and resp.data:
             tenant = resp.data
         else:
-            # Fallback to phone number matching (sanitized)
+            # Fallback (sanitized)
             clean_phone = parsed.msisdn.lstrip("+")
             resp = db.table("tenants").select("*").ilike("telegram_username", f"%{clean_phone}%").maybe_single().execute()
             if resp and resp.data:
@@ -322,7 +372,7 @@ async def process_live_transaction(bot, parsed):
 
         tenant_id = tenant["id"] if tenant else None
         
-        # 2. Insert into live_transactions (P6-T4)
+        # 3. Insert into live_transactions
         try:
             db.table("live_transactions").insert({
                 "tenant_id": tenant_id,
@@ -340,7 +390,7 @@ async def process_live_transaction(bot, parsed):
                 return
             raise
 
-        # 3. Notify Tenant (P6-T2)
+        # 4. Notify Tenant
         if tenant:
             text = M.PAYMENT_RECEIVED.format(
                 amount=parsed.amount,

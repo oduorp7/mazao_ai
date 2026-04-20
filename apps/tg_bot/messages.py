@@ -416,3 +416,82 @@ PROVIDER_REGISTRATION_SUCCESS = "🚀 *Payment Bridge Active*\nReal-time feed vi
 PROVIDER_REGISTRATION_FAILED = "⚠️ *Payment Bridge offline*\nCould not register callback with {provider}. Manual uploads (/statement) still work."
 
 LIVE_DATA_LABEL = "📡 *Live Feed (Intasend)*: {count} txns, last: {last_txn_time}"
+
+# ── Phase 7: Billing & Monetisation ──────────────────────────────────────────
+
+UPGRADE_PROMPT = """
+🚀 *Upgrade Mazao AI*
+
+Choose a plan to continue after your trial or to unlock premium features:
+
+🔹 *Mtu Wenyewe* (KES {mtu_price}/mo)
+• Daily business reports
+• Automated VAT summaries
+• Utility tracking (Tokens/Fuliza)
+
+🔸 *Biashara* (KES {biashara_price}/mo)
+• *Everything in Mtu Wenyewe*
+• Advanced AI Business Insights
+• Daily automated income tracking
+
+Select a plan below:
+"""
+
+STK_PUSH_SENT = """
+📲 *STK Push Sent*
+
+I've sent a payment request for *KES {amount}* to your M-Pesa number *{phone}*.
+
+1. Enter your M-Pesa PIN on your phone.
+2. Wait a few seconds for confirmation.
+
+Plan: *{plan_name}*
+"""
+
+PAYMENT_CONFIRMED = """
+🎉 *Payment Confirmed!*
+
+Thank you! Your *{plan_name}* subscription is now active.
+Amount received: KES {amount}
+
+All features are now unlocked. Type /help to see what you can do.
+"""
+
+PAYMENT_FAILED = """
+❌ *Payment Failed*
+
+Something went wrong with the payment request. Please try again or check your M-Pesa balance.
+
+Support: {upgrade_link}
+"""
+
+UPGRADE_REQUIRED = """
+🔒 *Feature Locked*
+
+The *{feature_name}* feature requires an active subscription.
+
+Your trial has expired. Upgrade now to keep managing your business with AI:
+{upgrade_link}
+"""
+
+TRIAL_REMINDER = """
+💡 *Quick Tip*: You have *{days_remaining} days* left in your free trial. Upgrade anytime with /upgrade.
+"""
+
+TRIAL_EXPIRY_WARNING = """
+⚠️ *Trial Expiry Warning*
+
+Your Mazao AI free trial ends in *{days_remaining} days*. 
+
+Upgrade to a paid plan today to ensure your daily reports and compliance alerts are never interrupted.
+Type /upgrade to see options.
+"""
+
+TRIAL_EXPIRED = """
+🛑 *Trial Expired*
+
+Your free trial has ended and your automated reports are now paused.
+
+Don't lose your business momentum! Upgrade to a paid plan now to resume full service.
+Type /upgrade to get started.
+"""

@@ -9,6 +9,7 @@ primary_region = "ams" # Closest stable region if nbo isn't available
   # Non-sensitive environment variables
   PYTHONPATH = "/app:/app/apps:/app/apps/agent"
   TZ = "Africa/Nairobi"
+  FLY_APP_URL = "https://mazao-ai.fly.dev"
 
 [http_service]
   internal_port = 8080

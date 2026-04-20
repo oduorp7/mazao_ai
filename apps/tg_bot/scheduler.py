@@ -227,42 +227,49 @@ async def job_deadline_alerts(bot: Bot) -> None:
     log.info("deadline_alerts_complete")
 
 
-# ── Job 3: Trial expiry warnings ──────────────────────────────────────────────
+# ── Job 3: Trial expiry alerts (P7-T7) ────────────────────────────────────────
 
+async def job_trial_alerts(bot: Bot) -> None:
+    """Check for trial expiry and send warnings at T-3 and T-0."""
     tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
+    now = datetime.utcnow()
+    
+    log.info("trial_alerts_start", count=len(tenants))
 
     for tenant in tenants:
-        if tenant.get("plan") != "trial":
+        if tenant.get("plan") != "free" or tenant.get("subscription_active"):
+            continue # Already paid or not on trial
+
+        ends_str = tenant.get("trial_ends_at")
+        if not ends_str:
             continue
+            
+        ends = datetime.fromisoformat(ends_str.replace("Z", "+00:00"))
+        now_tz = now.replace(tzinfo=ends.tzinfo)
+        
+        delta = (ends - now_tz).days
+        tid = tenant["telegram_id"]
 
-        days_left = tenant.get("trial_days_left", 0)
-
-        # Decrement trial days
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: db.update_tenant(
-                tenant["telegram_id"],
-                {"trial_days_left": max(days_left - 1, 0)},
-            )
-        )
-
-        if days_left in (3, 1):
-            try:
+        try:
+            if delta == 3:
                 await bot.send_message(
-                    chat_id=tenant["telegram_id"],
-                    text=M.TRIAL_WARNING.format(
-                        days=days_left,
-                        till="522522",  # your M-Pesa Till
-                        telegram_id=tenant["telegram_id"],
-                    ),
-                    parse_mode=ParseMode.MARKDOWN,
+                    chat_id=tid,
+                    text=M.TRIAL_EXPIRY_WARNING.format(days_remaining=3),
+                    parse_mode=ParseMode.MARKDOWN
                 )
-            except Exception as exc:
-                log.exception(
-                    "trial_warning_failed",
-                    telegram_id=tenant["telegram_id"],
-                    error=str(exc),
+            elif delta == 0:
+                await bot.send_message(
+                    chat_id=tid,
+                    text=M.TRIAL_EXPIRED,
+                    parse_mode=ParseMode.MARKDOWN
                 )
+                # Mark as expired in DB
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: db.update_tenant(tid, {"status": "paused"})
+                )
+        except Exception as exc:
+            log.exception("trial_alert_failed", telegram_id=tid, error=str(exc))
 
 # ── Job 4: Electricity token alerts (P4-T4) ──────────────────────────────────
 
@@ -419,7 +426,13 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
     )
 
     # Trial warnings — 9:00 AM Kenya time
-    # ... (existing code, commented out)
+    scheduler.add_job(
+        job_trial_alerts,
+        CronTrigger(hour=9, minute=0, timezone=KENYA_TZ),
+        args=[bot],
+        id="trial_alerts",
+        name="Trial expiry alerts",
+    )
     
     # New Phase 4 jobs
     scheduler.add_job(
