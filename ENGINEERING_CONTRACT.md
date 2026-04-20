@@ -30,6 +30,25 @@ All work is governed by the `MAZAO_AI_PHASE_GATE_PROTOCOL`.
 ## 5. TERM
 This contract is active for the duration of the Mazao AI development lifecycle. Any modification to this charter requires an explicit `DIRECTIVE` from the Chief Engineer.
 
+## 6. HEALING CYCLE PROTOCOL
+Before issuing any PHASE_COMPLETION JSON, Antigravity must complete the full 7-step healing cycle:
+1. **grep audit** for removed items (confirming deletions/purges).
+2. **local bot start** confirmed with zero errors.
+3. **live Telegram test** of all touched commands in the current phase.
+4. **live Telegram test** of minimum 3 untouched commands for regression checking.
+5. **fly deploy** successful.
+6. **retest on live** Fly.io deployment.
+7. **fly logs clean** after deployment (zero errors/exceptions).
+
+Every **PHASE_COMPLETION JSON** must include:
+- Real git hash from `git log --oneline -1`.
+- Grep audit results.
+- Last 20 lines of Fly.io logs after deployment.
+- Live Telegram verification timestamps.
+- Regression check results (PASS/FAIL).
+- Explicit collateral damage statement (Yes/No + details).
+- Explicit confirmation that all 7 healing cycle steps were completed.
+
 ---
 **Status:** SIGNED & COMMITTED
 **Date:** 2026-04-19

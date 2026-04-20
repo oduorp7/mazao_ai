@@ -11,7 +11,7 @@
     "rule_5": "No new features, no refactors, no improvements outside stated scope.",
     "rule_6": "If a blocker is encountered, Antigravity issues a BLOCKER_REPORT JSON and stops. Chief Engineer resolves before work resumes.",
     "rule_7": "Sample/fake data must not exist in any user-facing code path after Phase 1.",
-    "rule_8": "No WhatsApp, no Daraja, no OCR work until Phase 3 gate is passed."
+    "rule_8": "Before issuing any PHASE_COMPLETION JSON, Antigravity must complete the full 7-step healing cycle: (1) grep audit for removed items, (2) local bot start zero errors, (3) live Telegram test all touched commands, (4) live Telegram test minimum 3 untouched commands for regression, (5) fly deploy, (6) retest on live Fly.io deployment, (7) fly logs clean after deployment. PHASE_COMPLETION JSON must include: real git hash, grep output, fly logs last 20 lines, live Telegram timestamps, regression check results, explicit collateral damage statement."
   },
   "phase_completion_template": {
     "report_type": "PHASE_COMPLETION",
