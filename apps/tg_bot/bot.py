@@ -230,7 +230,6 @@ async def main() -> None:
     
     # ── Webhook Server (P5-T6 & P6-T2) ───────────────────────────────────────
     from aiohttp import web
-    import asyncio
     
     async def health_check(request):
         return web.Response(text="OK", status=200)
