@@ -218,6 +218,8 @@ async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 # ── /help ─────────────────────────────────────────────────────────────────────
 
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tenant = db.get_tenant(_tg_id(update))
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
