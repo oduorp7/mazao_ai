@@ -84,6 +84,20 @@ load_dotenv()
 setup_logging()
 log = get_logger(__name__)
 
+def _check_env() -> None:
+    """Verify all required environment variables are set."""
+    required = [
+        "TELEGRAM_BOT_TOKEN",
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_KEY",
+        "ANTHROPIC_API_KEY",
+    ]
+    missing = [env for env in required if not os.getenv(env)]
+    if missing:
+        log.critical("missing_environment_variables", missing=missing)
+        sys.exit(1)
+
+
 async def main() -> None:
     _check_env()
 
