@@ -15,11 +15,13 @@ def get_provider() -> PaymentProvider:
     provider_type = os.getenv("PAYMENT_PROVIDER", "intasend").lower()
 
     if provider_type == "intasend":
+        from .intasend import IntasendProvider
         return IntasendProvider()
 
-    # Placeholder for future Daraja provider
     if provider_type == "daraja":
-        raise NotImplementedError("Daraja provider integration pending.")
+        from .daraja import DarajaProvider
+        return DarajaProvider()
 
     # Default fallback
+    from .intasend import IntasendProvider
     return IntasendProvider()

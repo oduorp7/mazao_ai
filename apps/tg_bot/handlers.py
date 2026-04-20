@@ -185,10 +185,44 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+            
+            # ── Founding Member Auto-Tag (P9-T2) ──────────────────────────
+            # Set founding_member=true if total tenants <= 50
+            total_tenants = await asyncio.get_event_loop().run_in_executor(
+                None, 
+                lambda: db.get_client().table("tenants").select("id", count="exact").execute()
+            )
+            if total_tenants.count and total_tenants.count <= 50:
+                log.info("founding_member_tagged", telegram_id=tid)
+                await asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    lambda: db.update_tenant(tid, {"founding_member": True})
+                )
+                tenant["founding_member"] = True # Update local dict for immediate use
+            # ─────────────────────────────────────────────────────────────
+
             name = (tenant.get("full_name") or tenant.get("business_name") or "User") if tenant else "User"
             
             msg = M.LANGUAGE_SET_EN if lang == "en" else M.LANGUAGE_SET_SW
-            await query.edit_message_text(f"{msg}\n\n{M.SETUP_COMPLETE.format(name=name)}")
+            
+            # ── Warm Onboarding Finish (P9-T5) ───────────────────────────
+            trial_ends = (datetime.utcnow() + timedelta(days=14)).strftime("%d %b %Y")
+            badge = M.FOUNDING_BADGE if tenant.get("founding_member") else ""
+            
+            if tenant.get("user_type") == "individual":
+                final_msg = M.ONBOARDING_SUCCESS_INDIVIDUAL.format(
+                    name=name, 
+                    founding_badge=badge,
+                    trial_ends_at=trial_ends
+                )
+            else:
+                final_msg = M.ONBOARDING_SUCCESS_BUSINESS.format(
+                    name=name, 
+                    founding_badge=badge,
+                    trial_ends_at=trial_ends
+                )
+            
+            await query.edit_message_text(f"{msg}\n\n{final_msg}")
             await query.answer(f"Language set to {lang.upper()}")
 
             # ── Start Trial (P7-T2) ──────────────────────────────────────────
@@ -237,6 +271,13 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, help_text)
 
 
+# ── /privacy ──────────────────────────────────────────────────────────────────
+
+async def cmd_privacy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Displays the privacy policy."""
+    await _reply(update, M.PRIVACY_POLICY_TEXT)
+
+
 # ── /upgrade (P7-T4) ─────────────────────────────────────────────────────────
 
 async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -248,18 +289,24 @@ async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _reply(update, M.NOT_REGISTERED)
         return
 
+    is_founding = tenant.get("founding_member", False)
+    
     keyboard = [
         [
-            InlineKeyboardButton("🔹 Mtu Wenyewe (KES 500/mo)", callback_data="upgrade_mtu"),
+            InlineKeyboardButton("🔹 Mtu Wenyewe (KES 300/mo)" if is_founding else "🔹 Mtu Wenyewe (KES 500/mo)", callback_data="upgrade_mtu"),
         ],
         [
-            InlineKeyboardButton("🔸 Biashara (KES 2,500/mo)", callback_data="upgrade_biashara"),
+            InlineKeyboardButton("🔸 Biashara (KES 1,500/mo)" if is_founding else "🔸 Biashara (KES 2,500/mo)", callback_data="upgrade_biashara"),
         ]
     ]
     
+    msg = M.UPGRADE_PROMPT.format(mtu_price=300 if is_founding else 500, biashara_price=1500 if is_founding else 2500)
+    if is_founding:
+        msg = f"{M.FOUNDING_BADGE}\n\n{msg}"
+        
     await _reply(
         update, 
-        M.UPGRADE_PROMPT.format(mtu_price=500, biashara_price=2500),
+        msg,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -971,6 +1018,68 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+# ── /admin (P9-T4) ──────────────────────────────────────────────────────────
+
+async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Invisible dashboard for Chief Engineer."""
+    tid = _tg_id(update)
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+    
+    if not admin_id or str(tid) != str(admin_id):
+        # Silent ignore for unauthorized users
+        return
+
+    client = db.get_client()
+    
+    # 1. Total Tenants
+    tenants_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("tenants").select("plan, status").execute()
+    )
+    tenants = tenants_resp.data or []
+    total = len(tenants)
+    
+    # 2. Plan Breakdown
+    plans = {"free": 0, "mtu_wenyewe": 0, "biashara": 0, "trial": 0}
+    for t in tenants:
+        p = t.get("plan", "free")
+        plans[p] = plans.get(p, 0) + 1
+        
+    # 3. Active Trials
+    trials_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("tenants").select("trial_days_left").eq("plan", "trial").execute()
+    )
+    trial_data = trials_resp.data or []
+    avg_trial = sum(t["trial_days_left"] for t in trial_data) / len(trial_data) if trial_data else 0
+    
+    # 4. Monthly Revenue
+    this_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    rev_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("payment_requests").select("amount").eq("status", "confirmed").gte("confirmed_at", this_month).execute()
+    )
+    rev_data = rev_resp.data or []
+    revenue = sum(float(r["amount"]) for r in rev_data)
+    payments_count = len(rev_data)
+    
+    # 5. Conversion Targets (Expired trials not upgraded)
+    expired_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("tenants").select("id").eq("status", "lapsed").execute()
+    )
+    expired_count = len(expired_resp.data or [])
+
+    report = (
+        "👑 *Chief Engineer Dashboard*\n\n"
+        f"👥 *Tenants:* {total}\n"
+        f"├─ Biashara: {plans['biashara']}\n"
+        f"├─ Mtu Wenyewe: {plans['mtu_wenyewe']}\n"
+        f"└─ Free/Trial: {plans['trial'] + plans['free']}\n\n"
+        f"⏳ *Trials:* {len(trial_data)} active (Avg: {avg_trial:.1f} days)\n"
+        f"💰 *Revenue (MTD):* KES {revenue:,.0f} ({payments_count} txns)\n"
+        f"🎯 *Conversion Targets:* {expired_count} lapsed"
+    )
+    
+    await _reply(update, report)
+
+
 # ── Message handler — onboarding flow + free-text ────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1146,15 +1255,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Validate phone
         clean_phone = re.sub(r"[^0-9]", "", text)
         if not clean_phone or len(clean_phone) < 10:
-            # Check if they just hit enter/send on a pre-fill? No, Telegram doesn't work like that.
-            # But the user might sent a partial etc.
             await _reply(update, "❌ Please enter a valid Kenyan phone number (e.g. 0712345678).")
             return
             
         tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        
+        # ── Rate Limiting (P8-T4) ───────────────────────────────────────────
+        now = datetime.utcnow()
+        tenant_attempts = upgrade_rate_limit.get(tid, [])
+        # Remove timestamps older than 10 minutes
+        tenant_attempts = [ts for ts in tenant_attempts if (now - ts).total_seconds() < 600]
+        
+        if len(tenant_attempts) >= 3:
+            log.warn("upgrade_rate_limit_exceeded", telegram_id=tid)
+            await _reply(update, "⚠️ *Too many payment attempts.*\nPlease wait 10 minutes before trying again.")
+            return
+            
+        # Record attempt
+        tenant_attempts.append(now)
+        upgrade_rate_limit[tid] = tenant_attempts
+        # ────────────────────────────────────────────────────────────────────
+
         pending_plan = conv.get("data", {}).get("pending_plan", "mtu_wenyewe")
-        amount = 500 if pending_plan == "mtu_mtu_wenyewe" or pending_plan == "mtu_wenyewe" else 2500
-        plan_name = "Mtu Wenyewe" if amount == 500 else "Biashara"
+        is_founding = tenant.get("founding_member", False)
+        
+        if is_founding:
+            amount = 1500 if pending_plan == "biashara" else 300
+        else:
+            amount = 2500 if pending_plan == "biashara" else 500
+            
+        plan_name = "Mtu Wenyewe" if amount in (300, 500) else "Biashara"
         
         # Save phone to tenant
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"phone_number": clean_phone}))
@@ -1281,6 +1411,7 @@ BOT_COMMANDS = [
     BotCommand("subscribe",     "Add monthly bill"),
     BotCommand("subscriptions", "List active bills"),
     BotCommand("till",          "Register M-Pesa Till"),
+    BotCommand("privacy",       "Read Privacy Policy"),
     BotCommand("language",      "Change language"),
     BotCommand("stop",          "Pause bot alerts"),
     BotCommand("resume",        "Resume bot alerts"),

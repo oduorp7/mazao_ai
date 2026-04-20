@@ -41,15 +41,35 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 2.  **Database**: Run the contents of `apps/tg_bot/schema.sql` in the Supabase SQL Editor.
 3.  **Deploy**: `fly deploy` (Port 8080 exposed for health checks & webhooks).
 
-## 🛡️ Production Readiness (Phase 8 Checklist)
+## 🛡️ Production Readiness (Phase 9 Checklist)
 
-- [x] **Environment Variables**: All 10 confirmed set in Fly.io (including `INTASEND_*` and `FLY_APP_URL`).
+- [x] **Environment Variables**: All 11 confirmed set in Fly.io (including `INTASEND_*`, `FLY_APP_URL`, and `ADMIN_TELEGRAM_ID`).
 - [x] **Supabase Security**: RLS policies active on `tenants`, `live_transactions`, and `payment_requests`.
 - [x] **Bot Deployment**: Running 24/7 on Fly.io (Region: `ams`), health checks passing.
 - [x] **Webhook Integration**: Consolidated to POST only; registered in Intasend Sandbox.
+- [x] **Privacy Policy**: Deliverable via `/privacy` command.
+- [x] **Founding Member Pricing**: Active for first 50 customers.
 - [ ] **ODPC Registration**: [ACTION REQUIRED] Data Controller registration pending.
 - [ ] **Safaricom Paybill**: [ACTION REQUIRED] Application for production paybill pending.
-- [ ] **Privacy Policy**: [ACTION REQUIRED] Hosted URL pending (currently local `PRIVACY_POLICY.md`).
+- [ ] **Privacy Policy URL**: [ACTION REQUIRED] Hosted URL pending (currently bot-only).
+
+## 🚀 Activation & Onboarding
+
+### How to Activate Daraja (When Paybill Approved)
+1. Set the following Fly.io secrets:
+   - `DARAJA_CONSUMER_KEY`
+   - `DARAJA_CONSUMER_SECRET`
+   - `DARAJA_SHORTCODE`
+2. Set `PAYMENT_PROVIDER=daraja`.
+3. Run `fly deploy`.
+
+### First Customer Onboarding Guide
+1. **Welcome**: Tell them to type `/start` in the bot.
+2. **Setup**: They will select "Business Owner" and enter their business name.
+3. **Agreement**: They must accept the privacy policy (noted in `/start`).
+4. **Trial**: They immediately get a 14-day free trial.
+5. **Founding Discount**: First 10 (up to 50) get the founding member badge and KES 300/mo pricing automatically.
+6. **Automation**: Mazao AI will automatically start tracking their Till once registered via `/till`.
 
 ---
 

@@ -48,6 +48,9 @@ from apps.tg_bot.handlers import (
     cmd_status,
     cmd_mystatus,
     cmd_language,
+    cmd_privacy,
+    cmd_upgrade,
+    cmd_admin,
     cmd_statement,
     cmd_tokens,
     cmd_fuliza,
@@ -161,6 +164,9 @@ async def main() -> None:
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("mystatus", cmd_mystatus))
     app.add_handler(CommandHandler("language", cmd_language))
+    app.add_handler(CommandHandler("privacy",  cmd_privacy))
+    app.add_handler(CommandHandler("upgrade",  cmd_upgrade))
+    app.add_handler(CommandHandler("admin",    cmd_admin))
     app.add_handler(CommandHandler("statement", cmd_statement))
     app.add_handler(CommandHandler("tokens", cmd_tokens))
     app.add_handler(CommandHandler("fuliza", cmd_fuliza))

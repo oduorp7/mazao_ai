@@ -21,7 +21,41 @@ Every morning I'll send you:
 
 *14-day free trial. No card needed.*
 
-To get started, what's your business name?\
+To get started, what's your business name?
+
+_By using Mazao AI you agree to our privacy policy. Type /privacy to read it._
+"""
+
+ONBOARDING_SUCCESS_BUSINESS = """
+🎉 *You're all set, {name}!* {founding_badge}
+
+Welcome to the future of Kenyan bookkeeping.
+
+📋 *Trial Status:*
+Your 14-day free trial starts now.
+*Trial ends:* {trial_ends_at}
+
+🚀 *3 Things to Do Next:*
+1. *Analyze:* Upload your M-Pesa statement (/report)
+2. *Monitor:* Set your Till number (/till)
+3. *Comply:* Check your compliance calendar (/status)
+
+Type /help to see all commands.
+"""
+
+ONBOARDING_SUCCESS_INDIVIDUAL = """
+🎉 *You're all set, {name}!* {founding_badge}
+
+📋 *Trial Status:*
+Your 14-day free trial starts now.
+*Trial ends:* {trial_ends_at}
+
+🚀 *3 Things to Do Next:*
+1. *Track:* Check your obligations (/mystatus)
+2. *Predict:* Set up utility tracking (/tokens)
+3. *Monitor:* Track your Fuliza (/fuliza)
+
+Type /help to see all commands.
 """
 
 ASK_MPESA_TILL = """\
@@ -429,6 +463,27 @@ Please renew now to resume service.
 
 [Click here to renew / upgrade]({upgrade_link})
 """
+
+PRIVACY_POLICY_TEXT = """
+🛡️ *Mazao AI Privacy Policy*
+
+*1. Data We Collect:*
+We collect your Telegram ID, business name, user type, M-Pesa Till (optional), tax obligations (VAT/PAYE), and employment status to provide our services.
+
+*2. Why We Collect It:*
+This data is used solely to generate your business reports, track tax deadlines, and manage your account.
+
+*3. Retention Period:*
+Your data is stored for the duration of your active subscription + 90 days after cancellation/expiry to allow for easy reactivation.
+
+*4. Deletion Rights:*
+You have the right to be forgotten. Type /stop to pause reports. To permanently delete all data, contact our support.
+
+*5. Contact:*
+For any data requests or privacy concerns, email us at: *privacy@mazao.ai*
+"""
+
+FOUNDING_BADGE = "⭐ *Founding Member*"
 
 TILL_REGISTRATION_PROMPT = "🛡️ *M-Pesa Till Registration*\n\nPlease enter your M-Pesa Till or Paybill number (5-7 digits) to enable real-time payment alerts."
 
