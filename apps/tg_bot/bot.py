@@ -49,6 +49,7 @@ from apps.tg_bot.handlers import (
     cmd_kra,
     cmd_status,
     cmd_mystatus,
+    cmd_settings, # HF-T3
     cmd_language,
     cmd_privacy,
     cmd_feedback,
@@ -130,6 +131,7 @@ async def main() -> None:
     app.add_handler(CommandHandler("kra",    cmd_kra))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("mystatus", cmd_mystatus))
+    app.add_handler(CommandHandler("settings", cmd_settings)) # HF-T3
     app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("privacy",  cmd_privacy))
     app.add_handler(CommandHandler("feedback", cmd_feedback))

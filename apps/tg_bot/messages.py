@@ -59,28 +59,19 @@ Type /help to see all commands.
 """
 
 ASK_MPESA_TILL = """\
-✅ Great, *{business_name}*!
+✅ Great!
 
 Now I need your *M-Pesa Till or Paybill number* so I can pull your transactions automatically.
 
 Send it now (numbers only, e.g. `123456`)\
 """
 
-ASK_KRA_PIN = """\
-Got it — Till *{till_number}* ✅
-
-Last one: what's your *KRA PIN*?
-(e.g. `A012345678B`)
-
-This lets me calculate your exact VAT and PAYE liability.\
-"""
-
 SETUP_COMPLETE = """\
-🎉 *You're all set, {name}!*
+🎉 *You're all set!* 
 
 Here's what happens next:
 • Tomorrow at *7:00 AM* you'll receive your first daily report
-• I'll track your KRA deadlines automatically
+• I'll track your deadlines automatically
 • Reply */report* anytime to generate one now
 
 *Your 14-day free trial starts today.*
@@ -96,9 +87,10 @@ HELP = """\
 
 /report   — Generate today's business report
 /vat      — See your current VAT estimate
-/kra      — Next KRA deadlines & amounts
+/kra      — Next deadlines & amounts
 /status   — Your account & subscription status
-/mystatus — Individual KRA/SHA status
+/settings — ⚙️ Edit your profile
+/mystatus — Individual status
 /language — Change language / Badilisha lugha
 /stop     — Pause daily reports
 /resume   — Resume daily reports
@@ -251,15 +243,31 @@ STATUS = """\
 
 Business: {business_name}
 M-Pesa Till: {till_number}
-KRA PIN: {kra_pin}
 Plan: {plan}
 Status: {status}
 Language: {language}
 {trial_line}
 Last report: {last_report}
 
-To update any details, message me directly.\
+To update any details: /settings\
 """
+
+# ── /settings (HF-T4) ──────────────────────────────────────────────────────────
+
+SETTINGS_MENU = """\
+⚙️ *Account Settings*
+
+Select what you'd like to update:
+"""
+
+SETTINGS_EDIT_NAME_PROMPT = "🏢 *Edit Business Name*\nPlease enter your new business name:"
+SETTINGS_EDIT_PHONE_PROMPT = "📱 *Edit Phone Number*\nPlease enter your new M-Pesa phone number:"
+SETTINGS_EDIT_TILL_PROMPT = "📡 *Edit Till Number*\nPlease enter your new M-Pesa Till or Paybill number:"
+SETTINGS_EDIT_VAT_PROMPT = "💰 *VAT Status*\nAre you registered for VAT?"
+SETTINGS_EDIT_EMPLOYEES_PROMPT = "👥 *Employees*\nDo you have any employees?"
+
+SETTINGS_UPDATED = "✅ *{field} updated!*\nNew value: {new_value}"
+SETTINGS_INVALID_INPUT = "❌ *Invalid {field}*\nPlease try again with a valid value."
 
 # ── Errors ────────────────────────────────────────────────────────────────────
 

@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS tenants (
     full_name           TEXT,
     business_name       TEXT,
     mpesa_till          TEXT,
-    kra_pin             TEXT,
     plan                TEXT DEFAULT 'trial',   -- trial | hustler | biashara
     status              TEXT DEFAULT 'pending', -- pending | trial | active | paused | lapsed
     trial_days_left     INT DEFAULT 14,
@@ -89,7 +88,6 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS user_type TEXT DEFAULT 'business';
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS employment_status TEXT; -- employed | self_employed | unemployed
 
 -- Drop obsolete sensitive columns (P1-T2)
-ALTER TABLE tenants DROP COLUMN IF EXISTS kra_pin;
 ALTER TABLE tenants DROP COLUMN IF EXISTS sha_number;
 
 -- Missing index for report performance (P1-T5)

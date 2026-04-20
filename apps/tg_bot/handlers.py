@@ -8,7 +8,9 @@ Conversation states (stored in DB):
   idle              — normal, commands work
   awaiting_name     — /start flow, waiting for business name
   awaiting_till     — waiting for M-Pesa till number
-  awaiting_kra_pin  — waiting for KRA PIN
+  awaiting_settings_name  — editing business name
+  awaiting_settings_phone — editing phone number
+  awaiting_settings_till  — editing till number
 """
 
 from __future__ import annotations
@@ -131,8 +133,33 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
 
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Settings menu (HF-T3)."""
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton("✏️ Business Name", callback_data="set_name"),
+            InlineKeyboardButton("🌍 Language", callback_data="set_lang"),
+        ],
+        [
+            InlineKeyboardButton("📱 Phone Number", callback_data="set_phone"),
+            InlineKeyboardButton("📡 Till Number", callback_data="set_till"),
+        ],
+        [
+            InlineKeyboardButton("👥 Employees", callback_data="set_emp"),
+            InlineKeyboardButton("💰 VAT Status", callback_data="set_vat"),
+        ]
+    ]
+    await _reply(update, M.SETTINGS_MENU, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles the user type selection from the inline keyboard."""
+    """Handles callback queries from inline keyboards."""
     query = update.callback_query
     await query.answer()
     
@@ -140,8 +167,57 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     data = query.data
     
     log.info("callback_received", telegram_id=tid, data=data)
+
+    if data == "set_name":
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_settings_name"))
+        await query.edit_message_text(M.SETTINGS_EDIT_NAME_PROMPT)
     
-    if data == "type_business":
+    elif data == "set_lang":
+        keyboard = [
+            [
+                InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
+                InlineKeyboardButton("🇰🇪 Swahili", callback_data="lang_sw"),
+            ]
+        ]
+        await query.edit_message_text(M.ASK_LANGUAGE, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "set_phone":
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_settings_phone"))
+        await query.edit_message_text(M.SETTINGS_EDIT_PHONE_PROMPT)
+
+    elif data == "set_till":
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_settings_till"))
+        await query.edit_message_text(M.SETTINGS_EDIT_TILL_PROMPT)
+
+    elif data == "set_emp":
+        keyboard = [
+            [
+                InlineKeyboardButton("Yes", callback_data="set_emp_yes"),
+                InlineKeyboardButton("No", callback_data="set_emp_no"),
+            ]
+        ]
+        await query.edit_message_text(M.SETTINGS_EDIT_EMPLOYEES_PROMPT, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "set_vat":
+        keyboard = [
+            [
+                InlineKeyboardButton("Yes", callback_data="set_vat_yes"),
+                InlineKeyboardButton("No", callback_data="set_vat_no"),
+            ]
+        ]
+        await query.edit_message_text(M.SETTINGS_EDIT_VAT_PROMPT, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("set_emp_"):
+        val = data.replace("set_emp_", "")
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"has_employees": val == "yes"}))
+        await query.edit_message_text(M.SETTINGS_UPDATED.format(field="Employees", new_value=val.upper()))
+
+    elif data.startswith("set_vat_"):
+        val = data.replace("set_vat_", "")
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"is_vat_registered": val == "yes"}))
+        await query.edit_message_text(M.SETTINGS_UPDATED.format(field="VAT Status", new_value=val.upper()))
+
+    elif data == "type_business":
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_name", data={"user_type": "business"}))
         # Create tenant row if not exists
         if not await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid)):
@@ -966,7 +1042,7 @@ async def cmd_till(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ── /status ───────────────────────────────────────────────────────────────────
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Unified Business Dashboard (P5-T3). Redirects individuals to /mystatus."""
+    """Unified Business Dashboard (HF-T2). Redirects individuals to /mystatus."""
     tid = _tg_id(update)
     tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
@@ -981,81 +1057,83 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     
     # P5-T3: Redirect Individual users
     if tenant.get("user_type") == "individual":
-        await _reply(update, M.BUSINESS_STATUS_REDIRECT)
+        await cmd_mystatus(update, context)
         return
 
-    today = datetime.utcnow()
-    
-    # ── 1. Tax Calculation ────────────────────────────────────────────────
-    # VAT (20th), PAYE (9th)
-    next_month = today + timedelta(days=32)
-    vat_due = today.replace(day=20) if today.day < 20 else next_month.replace(day=20)
-    paye_due = today.replace(day=9) if today.day < 9 else next_month.replace(day=9)
-    annual_due = datetime(today.year if today.month <= 6 else today.year + 1, 6, 30)
-    
-    # ── 2. Latest Statement / Live Transactions ──────────────────────────
-    from datetime import datetime
-    month_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    live_resp = db.get_client().table("live_transactions").select("*").eq("tenant_id", str(tenant["id"])).gte("trans_time", month_start).execute()
-    live_data = live_resp.data if live_resp else []
-    
-    if live_data:
-        count = len(live_data)
-        last_txn = max(tx["trans_time"] for tx in live_data)
-        last_txn_dt = datetime.fromisoformat(last_txn.replace("Z", "+00:00"))
-        s_summary = f"📡 Live Feed ({count} txns)\nLast: {last_txn_dt.strftime('%H:%M Today')}"
-    else:
-        statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
-        if statement:
-            s_summary = (
-                f"Period: {statement.get('period', 'N/A')}\n"
-                f"Net: KES {(statement.get('net') or 0):,.2f}"
-            )
-        else:
-            s_summary = "_No statement uploaded yet. (Use /statement)_"
+    # ── 1. Header ──────────────────────────────────────────────────────────
+    biz_name = tenant.get("business_name") or "Your Business"
+    report = f"🏢 *{biz_name}*\n\n"
 
-    # ── 3. Subscriptions ──────────────────────────────────────────────────
-    subs = await asyncio.get_event_loop().run_in_executor(
-        None, 
-        lambda: db.get_client().table("subscriptions").select("*").eq("tenant_id", str(tenant["id"])).execute()
+    # ── 2. Account Section ─────────────────────────────────────────────────
+    user_type = tenant.get("user_type", "business").title()
+    lang = tenant.get("preferred_language", "en").upper()
+    report += (
+        "👤 *Account*\n"
+        f"├─ Name: {biz_name}\n"
+        f"├─ Type: {user_type}\n"
+        f"└─ Lang: {lang}\n\n"
     )
-    sub_count = len(subs.data) if subs.data else 0
-    next_sub_date = "N/A"
-    sub_days = 0
-    
-    if sub_count > 0:
-        # Find the soonest renewal
-        soonest = 99
-        for s in subs.data:
-            day = s["renewal_day"]
-            days_left = day - today.day if day > today.day else (day + 30 - today.day)
-            if days_left < soonest:
-                soonest = days_left
-                next_date = today.replace(day=day) if day > today.day else (today + timedelta(days=32)).replace(day=day)
-                next_sub_date = next_date.strftime("%d %b")
-                sub_days = soonest
 
-    # ── 4. Platform Status ────────────────────────────────────────────────
-    status_map = {"active": "✅ Active", "trial": "⏳ Trial", "paused": "⏸️ Paused"}
-    platform_status = status_map.get(tenant.get("status", ""), "⚙️ Setup")
+    # ── 3. Plan Section ────────────────────────────────────────────────────
+    plan = tenant.get("plan", "trial").upper()
+    status = tenant.get("status", "active").title()
+    
     if tenant.get("plan") == "trial":
-        platform_status += f" ({tenant.get('trial_days_left', 0)}d left)"
-
-    await _reply(
-        update,
-        M.BUSINESS_STATUS_DASHBOARD.format(
-            business_name=tenant.get("business_name", "Your Business"),
-            plan_tier=tenant.get("plan", "trial").upper(),
-            vat_days=(vat_due.date() - today.date()).days,
-            paye_days=(paye_due.date() - today.date()).days,
-            annual_days=(annual_due.date() - today.date()).days,
-            statement_summary=s_summary,
-            sub_count=sub_count,
-            next_sub_date=next_sub_date,
-            sub_days=sub_days,
-            platform_status=platform_status
+        days_left = tenant.get("trial_days_left", 0)
+        expiry_dt = datetime.utcnow() + timedelta(days=days_left)
+        expiry_str = expiry_dt.strftime("%d %b %Y")
+        report += (
+            "🚀 *Plan*\n"
+            f"├─ Tier: {plan}\n"
+            f"├─ Status: {status}\n"
+            f"└─ Ends: {expiry_str} ({days_left}d left)\n\n"
         )
-    )
+    else:
+        expiry = tenant.get("subscription_expires_at")
+        if expiry:
+            if isinstance(expiry, str):
+                expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+            else:
+                expiry_dt = expiry
+            expiry_str = expiry_dt.strftime("%d %b %Y")
+        else:
+            expiry_str = "N/A"
+            
+        report += (
+            "🚀 *Plan*\n"
+            f"├─ Tier: {plan}\n"
+            f"├─ Status: {status}\n"
+            f"└─ Expiry: {expiry_str}\n\n"
+        )
+
+    # ── 4. M-Pesa Section ──────────────────────────────────────────────────
+    till = tenant.get("mpesa_till")
+    if till:
+        report += f"📡 *M-Pesa*\n└─ Till: {till} ✅\n\n"
+    else:
+        report += "📡 *M-Pesa*\n└─ Not connected — /till to add\n\n"
+
+    # ── 5. Last Activity ──────────────────────────────────────────────────
+    latest_report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
+    if latest_report:
+        # Use created_at or updated_at from report
+        created_at = latest_report.get("created_at")
+        if created_at:
+            if isinstance(created_at, str):
+                activity_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            else:
+                activity_dt = created_at
+            activity_str = activity_dt.strftime("%d %b %Y")
+        else:
+            activity_str = "Recent"
+        report += f"⏱️ *Last Activity*\n└─ Report: {activity_str}\n\n"
+    else:
+        report += "⏱️ *Last Activity*\n└─ No reports yet\n\n"
+
+    # ── 6. Edit Prompt ─────────────────────────────────────────────────────
+    report += "⚙️ Edit your details: /settings"
+
+    await _reply(update, report)
 
 
 # ── /stop and /resume ─────────────────────────────────────────────────────────
@@ -1172,13 +1250,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Command handlers are registered separately, but this ensures state doesn't block them
         return
 
+    if state == "awaiting_settings_name":
+        if len(text) < 2:
+            await _reply(update, M.SETTINGS_INVALID_INPUT.format(field="Business Name"))
+            return
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"business_name": text}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        await _reply(update, M.SETTINGS_UPDATED.format(field="Business Name", new_value=text))
+        return
+
+    if state == "awaiting_settings_phone":
+        clean_phone = re.sub(r"[^0-9]", "", text)
+        if not clean_phone or len(clean_phone) < 10:
+            await _reply(update, M.SETTINGS_INVALID_INPUT.format(field="Phone Number"))
+            return
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"phone_number": clean_phone}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        await _reply(update, M.SETTINGS_UPDATED.format(field="Phone Number", new_value=clean_phone))
+        return
+
+    if state == "awaiting_settings_till":
+        clean_till = re.sub(r"[^0-9]", "", text)
+        if not clean_till or len(clean_till) < 5:
+            await _reply(update, M.SETTINGS_INVALID_INPUT.format(field="Till Number"))
+            return
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"mpesa_till": clean_till}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        await _reply(update, M.SETTINGS_UPDATED.format(field="Till Number", new_value=clean_till))
+        return
+
     if state == "awaiting_name":
         if len(text) < 2:
-            await _reply(update, "Please enter your business name.")
+            await _reply(update, M.SETTINGS_INVALID_INPUT.format(field="Business Name"))
             return
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"business_name": text}))
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_till"))
-        await _reply(update, M.ASK_MPESA_TILL.format(business_name=text))
+        await _reply(update, M.ASK_MPESA_TILL)
         return
 
     if state == "awaiting_individual_name":
@@ -1454,6 +1561,7 @@ BOT_COMMANDS = [
     BotCommand("help",          "Show all commands"),
     BotCommand("upgrade",       "🚀 Upgrade to paid plan"),
     BotCommand("status",        "Business dashboard"),
+    BotCommand("settings",      "⚙️ Edit your profile"),
     BotCommand("mystatus",      "Personal dashboard"),
     BotCommand("report",        "Generate profit report"),
     BotCommand("vat",           "Show VAT estimate"),
