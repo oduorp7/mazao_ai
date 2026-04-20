@@ -1,62 +1,93 @@
+"""
+STK Push initiator via Intasend SDK (Phase 6 Amendment 2 / Phase 7 prep).
+
+Usage:
+    result = await initiate_stk_push("0712345678", 500, "MAZAO-abc12345")
+"""
+
 import os
-import aiohttp
 import re
+import asyncio
 from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-async def initiate_stk_push(phone_number: str, amount: int, account_ref: str) -> dict:
-    """
-    P7-T1: Initiates M-Pesa STK Push via Africa's Talking.
-    Standardizes phone to 254XXXXXXXXX format.
-    """
-    username = os.getenv("AT_USERNAME", "sandbox")
-    api_key = os.getenv("AT_API_KEY", "")
-    product_name = os.getenv("AT_SHORTCODE", "MazaoAI")
-    
-    # 1. Phone Formatting (254XXXXXXXXX)
-    clean_phone = re.sub(r"\D", "", phone_number)
-    if clean_phone.startswith("0"):
-        clean_phone = "254" + clean_phone[1:]
-    elif clean_phone.startswith("+"):
-        clean_phone = clean_phone[1:]
-    elif not clean_phone.startswith("254"):
-        clean_phone = "254" + clean_phone
-        
-    if len(clean_phone) != 12:
-        return {"error": f"Invalid phone format: {phone_number}"}
 
-    # 2. AT Checkout Payload
-    url = "https://payments.sandbox.africastalking.com/mobile/checkout/request" if username == "sandbox" else "https://payments.africastalking.com/mobile/checkout/request"
-    
-    payload = {
-        "username": username,
-        "productName": product_name,
-        "phoneNumber": f"+{clean_phone}",
-        "currencyCode": "KES",
-        "amount": float(amount),
-        "metadata": {
-            "account_ref": account_ref
-        }
-    }
-    headers = {
-        "ApiKey": api_key,
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
+def _format_phone(phone: str) -> str:
+    """Normalize phone to 2547XXXXXXXX format."""
+    phone = re.sub(r"[^0-9]", "", phone)  # Strip non-digits
+    if phone.startswith("0"):
+        phone = "254" + phone[1:]
+    elif phone.startswith("7"):
+        phone = "254" + phone
+    elif phone.startswith("+"):
+        phone = phone.lstrip("+")
+    # Already 254... — pass through
+    return phone
 
-    log.info("stk_push_initiation", phone=clean_phone, amount=amount, ref=account_ref)
-    
+
+async def initiate_stk_push(
+    phone_number: str,
+    amount: int,
+    account_ref: str,
+    narrative: str = "Mazao AI Subscription"
+) -> dict:
+    """
+    Initiate M-Pesa STK Push via Intasend SDK.
+
+    Args:
+        phone_number: Customer phone (any format: 07XX, +2547XX, 2547XX)
+        amount: Amount in KES (integer)
+        account_ref: Reference string (format: MAZAO-{tenant_id[:8]})
+        narrative: User-facing payment description
+
+    Returns:
+        dict with Intasend response on success, or {"error": "..."} on failure.
+    """
+    token = os.getenv("INTASEND_SECRET_KEY", "")
+    publishable_key = os.getenv("INTASEND_PUBLISHABLE_KEY", "")
+
+    if not token or not publishable_key:
+        log.error("stk_push_missing_credentials")
+        return {"error": "Intasend credentials not configured"}
+
+    formatted_phone = _format_phone(phone_number)
+    is_test = os.getenv("INTASEND_ENV", "sandbox").lower() in ("sandbox", "test")
+
+    log.info("stk_push_initiating",
+             phone=formatted_phone,
+             amount=amount,
+             account_ref=account_ref,
+             test_mode=is_test)
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers, timeout=15) as resp:
-                res_json = await resp.json()
-                if resp.status == 201 or (resp.status == 200 and res_json.get("status") == "PendingConfirmation"):
-                    log.info("stk_push_success", tid=res_json.get("transactionId"))
-                    return res_json
-                else:
-                    log.error("stk_push_failed", status=resp.status, response=res_json)
-                    return {"error": res_json.get("errorMessage", "Unknown AT error")}
+        from intasend import APIService
+
+        # Run SDK call in executor (it's synchronous)
+        def _do_stk():
+            service = APIService(
+                token=token,
+                publishable_key=publishable_key,
+                test=is_test
+            )
+            return service.collect.mpesa_stk_push(
+                phone_number=formatted_phone,
+                email="noreply@mazao.ai",
+                amount=amount,
+                narrative=narrative
+            )
+
+        response = await asyncio.get_event_loop().run_in_executor(None, _do_stk)
+
+        log.info("stk_push_success",
+                 phone=formatted_phone,
+                 amount=amount,
+                 response=str(response)[:200])
+        return response if isinstance(response, dict) else {"response": str(response)}
+
     except Exception as e:
-        log.exception("stk_push_exception", error=str(e))
+        log.exception("stk_push_failed",
+                      phone=formatted_phone,
+                      amount=amount,
+                      error=str(e))
         return {"error": str(e)}

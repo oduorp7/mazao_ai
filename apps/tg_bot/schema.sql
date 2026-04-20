@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS live_transactions (
     msisdn          TEXT,
     first_name      TEXT,
     bill_ref        TEXT,
-    provider        TEXT DEFAULT 'africastalking',
+    provider        TEXT DEFAULT 'intasend',
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
@@ -200,35 +200,4 @@ CREATE INDEX IF NOT EXISTS idx_tenants_till_number ON tenants(till_number);
 -- RLS
 ALTER TABLE live_transactions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_all_live_transactions" ON live_transactions
-    FOR ALL USING (auth.role() = 'service_role');
-
-
--- ── Migration: Phase 7 (P7-T2) ────────────────────────────────────────────────
--- Subscription Billing (STK Push) & Trial Management
-
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'free';
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ;
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_active BOOLEAN DEFAULT false;
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS phone_number TEXT;
-
-CREATE TABLE IF NOT EXISTS payment_requests (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id       UUID REFERENCES tenants(id),
-    amount          NUMERIC NOT NULL,
-    phone_number    TEXT NOT NULL,
-    account_ref     TEXT NOT NULL,
-    at_request_id   TEXT,
-    status          TEXT DEFAULT 'pending', -- pending, confirmed, failed
-    created_at      TIMESTAMPTZ DEFAULT now(),
-    confirmed_at    TIMESTAMPTZ
-);
-
--- Index for matching STK push result
-CREATE INDEX IF NOT EXISTS idx_payment_req_at_id ON payment_requests(at_request_id);
-CREATE INDEX IF NOT EXISTS idx_payment_req_tenant_id ON payment_requests(tenant_id);
-
--- RLS
-ALTER TABLE payment_requests ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_all_payment_requests" ON payment_requests
     FOR ALL USING (auth.role() = 'service_role');

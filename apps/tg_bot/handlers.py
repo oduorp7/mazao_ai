@@ -1,3 +1,16 @@
+"""
+handlers.py — All Telegram command and message handlers.
+
+Each handler is a standalone async function registered in bot.py.
+Pattern: receive Update → check tenant state → act → reply.
+
+Conversation states (stored in DB):
+  idle              — normal, commands work
+  awaiting_name     — /start flow, waiting for business name
+  awaiting_till     — waiting for M-Pesa till number
+  awaiting_kra_pin  — waiting for KRA PIN
+"""
+
 from __future__ import annotations
 
 import sys
@@ -6,7 +19,6 @@ import re
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 from telegram import (
     Update,
@@ -24,7 +36,6 @@ import apps.tg_bot.messages as M
 from apps.agent.utils.logging import get_logger
 from apps.agent.utils.ocr_service import ocr_engine
 from apps.agent.state import RawTransaction, TransactionType
-from apps.tg_bot.trial import get_trial_status, is_feature_allowed
 
 log = get_logger(__name__)
 
@@ -156,33 +167,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             msg = M.LANGUAGE_SET_EN if lang == "en" else M.LANGUAGE_SET_SW
             await query.edit_message_text(f"{msg}\n\n{M.SETUP_COMPLETE.format(name=name)}")
             await query.answer(f"Language set to {lang.upper()}")
-            
-            # P7-T3: Start 14-day trial at end of onboarding
-            from apps.tg_bot.trial import start_trial
-            await start_trial(str(tenant["id"]))
-            
         except Exception as exc:
             log.exception("handle_callback_critical_failure", error=str(exc))
             await query.answer("⚠️ Mazao AI Logic Error")
             await query.edit_message_text("⚠️ *Mazao AI Logic Error*\nFailed to save settings.")
-
-    elif data.startswith("plan_"):
-        # P7-T4: Plan selection
-        plan_type = data.replace("plan_", "")
-        amount = 500 if plan_type == "mtu" else 2500
-        
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_payment_phone", data={"plan": plan_type, "amount": amount}))
-        
-        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-        suggested_phone = tenant.get("phone_number") or ""
-        
-        prompt = f"💳 *Confirm M-Pesa Number*\n\nPlease enter the phone number to receive the KES {amount} payment prompt.\n"
-        if suggested_phone:
-            prompt += f"\n(Current: `{suggested_phone}` — reply with this number or enter a new one)"
-        else:
-            prompt += "\n(Format: 07XX... or 2547XX...)"
-            
-        await query.edit_message_text(prompt, parse_mode=ParseMode.MARKDOWN)
 
 
 # ── /language ─────────────────────────────────────────────────────────────────
@@ -309,14 +297,6 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
-        
-    # P7-T6: Feature Gating
-    status = await get_trial_status(str(tenant["id"]))
-    if not await is_feature_allowed(str(tenant["id"]), "report"):
-        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Financial Reports"))
-        return
-    
-    trial_msg = f"\n\n{M.TRIAL_REMINDER.format(days_remaining=status['days_remaining'])}" if status["plan"] == "free" and not status["is_expired"] else ""
 
     # P3-T2: Check if a statement has been uploaded
     statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
@@ -554,12 +534,6 @@ async def _run_pipeline_and_reply(
         report_text = result.report_text_sw if lang == "sw" else result.report_text_en
 
         if report_text:
-            # P7-T6: Append trial reminder if applicable
-            from apps.tg_bot.trial import get_trial_status
-            status = await get_trial_status(str(tenant["id"]))
-            if status["plan"] == "free" and not status["is_expired"]:
-                report_text += f"\n\n{M.TRIAL_REMINDER.format(days_remaining=status['days_remaining'])}"
-
             await context.bot.send_message(
                 chat_id=tid,
                 text=report_text,
@@ -703,12 +677,6 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await _reply(update, M.NOT_REGISTERED)
         return
     
-    # P7-T6: Feature Gating
-    status = await get_trial_status(str(tenant["id"]))
-    if not await is_feature_allowed(str(tenant["id"]), "utility_tracking"):
-        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Utility Tracking"))
-        return
-    
     await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
     await _reply(update, M.TOKEN_ENTRY_PROMPT)
 
@@ -722,12 +690,6 @@ async def cmd_fuliza(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await _reply(update, M.NOT_REGISTERED)
         return
     
-    # P7-T6: Feature Gating
-    status = await get_trial_status(str(tenant["id"]))
-    if not await is_feature_allowed(str(tenant["id"]), "utility_tracking"):
-        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Fuliza Tracking"))
-        return
-    
     await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_fuliza"))
     await _reply(update, M.FULIZA_SMS_PROMPT)
 
@@ -739,12 +701,6 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
-        return
-    
-    # P7-T6: Feature Gating
-    status = await get_trial_status(str(tenant["id"]))
-    if not await is_feature_allowed(str(tenant["id"]), "utility_tracking"): # bills use utility gate
-        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Bill Subscriptions"))
         return
     
     await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_sub_name"))
@@ -815,12 +771,6 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
-        return
-    
-    # P7-T6: Feature Gating
-    status_info = await get_trial_status(str(tenant["id"]))
-    if not await is_feature_allowed(str(tenant["id"]), "report"): # status uses report gate
-        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Business Dashboard"))
         return
     
     # P5-T3: Redirect Individual users
@@ -930,30 +880,6 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
-# ── /upgrade (P7-T4) ─────────────────────────────────────────────────────────
-
-async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """💎 Upgrade flow starter."""
-    tid = _tg_id(update)
-    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-    if not tenant:
-        await _reply(update, M.NOT_REGISTERED)
-        return
-
-    keyboard = [
-        [InlineKeyboardButton("Mtu Wenyewe (500/mo)", callback_data="plan_mtu")],
-        [InlineKeyboardButton("Biashara (2,500/mo)", callback_data="plan_biashara")]
-    ]
-    
-    # Use formatted prices from messages
-    text = M.UPGRADE_PROMPT.format(mtu_price="500", biashara_price="2,500")
-    await update.message.reply_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode=ParseMode.MARKDOWN
-    )
-
-
 # ── Message handler — onboarding flow + free-text ────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -970,45 +896,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await _reply(update, M.TILL_CONFIRMED.format(till_number=text))
         else:
             await _reply(update, M.TILL_INVALID)
-        return
-
-    if state == "awaiting_payment_phone":
-        # P7-T4: Process Phone -> Initiate STK
-        import re
-        clean_phone = re.sub(r"\D", "", text)
-        if len(clean_phone) >= 9:
-            plan_data = conv.get("data", {})
-            amount = plan_data.get("amount", 500)
-            
-            tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-            account_ref = f"MAZAO-{str(tenant['id'])[:8]}"
-            
-            # Save phone to tenant for future use
-            await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"phone_number": clean_phone}))
-            
-            from apps.payments.stk import initiate_stk_push
-            stk_resp = await initiate_stk_push(clean_phone, amount, account_ref)
-            
-            if "error" in stk_resp:
-                await _reply(update, f"❌ *Payment System Error*\n{stk_resp['error']}")
-            else:
-                # 5. Insert pending request
-                await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: db.get_client().table("payment_requests").insert({
-                        "tenant_id": str(tenant["id"]),
-                        "amount": amount,
-                        "phone_number": clean_phone,
-                        "account_ref": account_ref,
-                        "at_request_id": stk_resp.get("transactionId"),
-                        "status": "pending"
-                    }).execute()
-                )
-                
-                db.clear_conv_state(tid)
-                await _reply(update, M.STK_PUSH_SENT.format(phone=clean_phone, amount=amount))
-        else:
-            await _reply(update, "❌ Invalid phone number. Please enter a valid 07XX or 2547XX number.")
         return
 
     if state == "awaiting_tokens":
@@ -1253,7 +1140,6 @@ BOT_COMMANDS = [
     BotCommand("fuliza",        "Log Fuliza loan"),
     BotCommand("subscribe",     "Add monthly bill"),
     BotCommand("subscriptions", "List active bills"),
-    BotCommand("upgrade",       "💎 Upgrade to Premium"),
     BotCommand("till",          "Register M-Pesa Till"),
     BotCommand("language",      "Change language"),
     BotCommand("stop",          "Pause bot alerts"),

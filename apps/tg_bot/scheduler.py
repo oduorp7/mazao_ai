@@ -227,55 +227,42 @@ async def job_deadline_alerts(bot: Bot) -> None:
     log.info("deadline_alerts_complete")
 
 
-# ── Job 3: Trial execution & alerts (P7-T7) ───────────────────────────────────
+# ── Job 3: Trial expiry warnings ──────────────────────────────────────────────
 
-async def job_trial_alerts(bot: Bot) -> None:
-    """P7-T7: Daily trial monitoring and expiry notifications."""
-    try:
-        tenants = await asyncio.get_event_loop().run_in_executor(
+    tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
+
+    for tenant in tenants:
+        if tenant.get("plan") != "trial":
+            continue
+
+        days_left = tenant.get("trial_days_left", 0)
+
+        # Decrement trial days
+        await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: db.get_client().table("tenants")
-            .select("*")
-            .eq("plan", "free")
-            .not_.is_("trial_ends_at", "null")
-            .execute()
+            lambda: db.update_tenant(
+                tenant["telegram_id"],
+                {"trial_days_left": max(days_left - 1, 0)},
+            )
         )
-        
-        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        log.info("trial_alerts_start", count=len(tenants.data))
 
-        for tenant in tenants.data:
-            tid = tenant["telegram_id"]
-            ends_at = datetime.fromisoformat(tenant["trial_ends_at"].replace("Z", "+00:00")).replace(tzinfo=None)
-            days_left = (ends_at - today).days
-
+        if days_left in (3, 1):
             try:
-                if days_left == 3:
-                    await bot.send_message(
-                        chat_id=tid,
-                        text=M.TRIAL_EXPIRY_WARNING.format(days_remaining=3),
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                elif days_left <= 0:
-                    # Deactive and notify
-                    await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: db.get_client().table("tenants")
-                        .update({"subscription_active": False})
-                        .eq("id", tenant["id"])
-                        .execute()
-                    )
-                    await bot.send_message(
-                        chat_id=tid,
-                        text=M.TRIAL_EXPIRED,
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                    log.info("trial_expired_action", tenant=tenant["id"])
-            except Exception as e:
-                log.error("trial_alert_tenant_failed", tid=tid, error=str(e))
-
-    except Exception as exc:
-        log.exception("trial_alerts_job_failed", error=str(exc))
+                await bot.send_message(
+                    chat_id=tenant["telegram_id"],
+                    text=M.TRIAL_WARNING.format(
+                        days=days_left,
+                        till="522522",  # your M-Pesa Till
+                        telegram_id=tenant["telegram_id"],
+                    ),
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+            except Exception as exc:
+                log.exception(
+                    "trial_warning_failed",
+                    telegram_id=tenant["telegram_id"],
+                    error=str(exc),
+                )
 
 # ── Job 4: Electricity token alerts (P4-T4) ──────────────────────────────────
 
@@ -431,15 +418,9 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
         coalesce=True,
     )
 
-    # Trial expiry alerts — 9:00 AM Kenya time
-    scheduler.add_job(
-        job_trial_alerts,
-        CronTrigger(hour=9, minute=0, timezone=KENYA_TZ),
-        args=[bot],
-        id="trial_alerts",
-        name="Trial expiry monitor",
-    )
-
+    # Trial warnings — 9:00 AM Kenya time
+    # ... (existing code, commented out)
+    
     # New Phase 4 jobs
     scheduler.add_job(
         job_token_alerts,

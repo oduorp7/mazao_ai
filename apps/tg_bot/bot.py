@@ -12,11 +12,11 @@ CORE ENVIRONMENT VARIABLES (Required):
   ANTHROPIC_API_KEY
   FLY_APP_URL
 
-PAYMENT BRIDGE VARIABLES (Optional - Africa's Talking):
-  AT_API_KEY
-  AT_USERNAME
-  AT_SHORTCODE
-  PAYMENT_PROVIDER (africastalking | daraja)
+PAYMENT BRIDGE VARIABLES (Optional - Intasend):
+  INTASEND_PUBLISHABLE_KEY
+  INTASEND_SECRET_KEY
+  PAYMENT_PROVIDER (intasend | daraja)
+  INTASEND_WEBHOOK_CHALLENGE
 
 Nothing else lives here. All logic is in handlers.py, scheduler.py,
 pipeline.py (agent), and db.py.
@@ -91,7 +91,7 @@ def _check_env() -> None:
         "ANTHROPIC_API_KEY",
         "FLY_APP_URL",
     ]
-    payment = ["AT_API_KEY", "AT_USERNAME", "AT_SHORTCODE", "PAYMENT_PROVIDER"]
+    payment = ["INTASEND_PUBLISHABLE_KEY", "INTASEND_SECRET_KEY", "PAYMENT_PROVIDER"]
     
     missing_core = [k for k in core if not os.getenv(k)]
     if missing_core:
@@ -236,50 +236,40 @@ async def main() -> None:
         return web.Response(text="OK", status=200)
 
     async def payment_webhook(request):
-        """P6-T2: Provider-agnostic payment receiver (C2B)."""
+        """P6A2-T2: Provider-agnostic payment receiver with challenge validation."""
         try:
             payload = await request.json()
+
+            # ── Webhook Challenge Validation (P6A2 Addendum) ─────────────
+            expected_challenge = os.getenv("INTASEND_WEBHOOK_CHALLENGE", "")
+            incoming_challenge = payload.get("challenge", "")
+
+            if expected_challenge and incoming_challenge:
+                if incoming_challenge != expected_challenge:
+                    log.warn("webhook_challenge_mismatch",
+                             expected=expected_challenge[:6] + "...",
+                             received=incoming_challenge[:6] + "...")
+                    return web.Response(text="Unauthorized", status=401)
+                log.info("webhook_challenge_validated")
+            # If challenge field absent (sandbox test) — proceed normally
+
             from apps.payments import get_provider
             provider = get_provider()
             parsed = await provider.handle_webhook(payload)
-            
-            # Fire-and-forget processing to keep response < 5s
-            asyncio.create_task(process_live_transaction(app.bot, parsed))
-            
+
+            if parsed:
+                # Fire-and-forget processing to keep response < 5s
+                asyncio.create_task(process_live_transaction(app.bot, parsed))
+
             return web.Response(text="OK", status=200)
         except Exception as e:
             log.error("webhook_handler_error", error=str(e))
             return web.Response(text="OK", status=200) # Always 200 for providers
 
-    async def payment_confirm(request):
-        """P7-T5: STK Push Confirmation Webhook."""
-        try:
-            payload = await request.json()
-            log.info("stk_push_callback", payload=payload)
-            
-            # 1. Parse Status
-            status = payload.get("status")
-            request_id = payload.get("requestId")
-            val_str = payload.get("amount", "0")
-            
-            import re
-            amount = 0.0
-            match = re.search(r"([\d,]+\.?\d*)", val_str)
-            if match:
-                amount = float(match.group(1).replace(",", ""))
-
-            # Fire-and-forget processing
-            asyncio.create_task(process_stk_result(app.bot, status, request_id, amount))
-            
-            return web.Response(text="OK", status=200)
-        except Exception as e:
-            log.error("stk_confirm_webhook_error", error=str(e))
-            return web.Response(text="OK", status=200)
-
     health_app = web.Application()
     health_app.router.add_get("/health", health_check)
     health_app.router.add_post("/payments/webhook", payment_webhook)
-    health_app.router.add_post("/payments/confirm", payment_confirm)
+    health_app.router.add_post("/payments/confirm", payment_webhook)
     
     runner = web.AppRunner(health_app)
     await runner.setup()
@@ -369,58 +359,3 @@ async def process_live_transaction(bot, parsed):
 
     except Exception as e:
         log.error("transaction_processing_failed", error=str(e))
-
-
-async def process_stk_result(bot, status, request_id, amount):
-    """P7-T5: Updates database and notifies user of STK result."""
-    try:
-        from apps.tg_bot.db import get_client
-        import apps.tg_bot.messages as M
-        from datetime import datetime
-        
-        db = get_client()
-        
-        # 1. Find the request
-        req_resp = db.table("payment_requests").select("*").eq("at_request_id", request_id).maybe_single().execute()
-        if not req_resp or not req_resp.data:
-            log.warn("stk_request_not_found", request_id=request_id)
-            return
-            
-        req = req_resp.data
-        tenant_id = req["tenant_id"]
-        
-        # 2. Update Status
-        new_status = "confirmed" if status == "Success" else "failed"
-        db.table("payment_requests").update({
-            "status": new_status,
-            "confirmed_at": datetime.utcnow().isoformat() if new_status == "confirmed" else None
-        }).eq("at_request_id", request_id).execute()
-        
-        # 3. Handle Success
-        tenant_resp = db.table("tenants").select("*").eq("id", tenant_id).maybe_single().execute()
-        if not tenant_resp or not tenant_resp.data: return
-        tenant = tenant_resp.data
-        
-        if new_status == "confirmed":
-            # Map amount to plan
-            plan = "mtu_wenyewe" if amount < 1500 else "biashara"
-            
-            db.table("tenants").update({
-                "plan": plan,
-                "subscription_active": True
-            }).eq("id", tenant_id).execute()
-            
-            # Notify
-            text = M.PAYMENT_CONFIRMED.format(
-                plan_name=plan.replace("_", " ").title(),
-                amount=amount
-            )
-            await bot.send_message(chat_id=tenant["telegram_id"], text=text, parse_mode=ParseMode.MARKDOWN)
-            log.info("payment_activated", tenant=tenant_id, plan=plan)
-        else:
-            # Notify failure
-            await bot.send_message(chat_id=tenant["telegram_id"], text=M.PAYMENT_FAILED, parse_mode=ParseMode.MARKDOWN)
-            log.info("payment_failed_notification", tenant=tenant_id)
-
-    except Exception as e:
-        log.error("stk_result_processing_failed", error=str(e))
