@@ -291,6 +291,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 None, lambda: db.update_tenant(tid, {"onboarding_completed": True})
             )
             tenant["onboarding_completed"] = True
+            
+            # ── Contextual Menu Update (MENU-FIX-T1) ──────────────────────
+            from apps.tg_bot.bot import set_contextual_commands
+            await set_contextual_commands(context.bot, tid, tenant.get("user_type", "business"))
             # ─────────────────────────────────────────────────────────────
 
             # ── Founding Member Auto-Tag (P9-T2) ──────────────────────────

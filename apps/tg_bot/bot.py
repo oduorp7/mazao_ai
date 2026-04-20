@@ -28,7 +28,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Bot, Update, BotCommand, BotCommandScopeChat, BotCommandScopeDefault
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -267,76 +267,71 @@ if __name__ == "__main__":
         pass
 
 
-async def process_live_transaction(bot, parsed):
-    """P6-T2 & P7-T5: Routes transaction to tenant or subscription processor."""
+# ── Contextual Command Sets (MENU-FIX-T1) ──────────────────────────────
+
+CMD_DEFAULT = [
+    BotCommand("start",    "Start Mazao AI & Onboarding"),
+    BotCommand("help",     "Show all commands"),
+    BotCommand("privacy",  "Read Privacy Policy"),
+    BotCommand("language", "Change language / Badilisha lugha"),
+    BotCommand("feedback", "Send feedback/report issue"),
+]
+
+CMD_BUSINESS = [
+    BotCommand("report",   "Generate today's business report"),
+    BotCommand("status",   "Business Dashboard"),
+    BotCommand("till",     "Register M-Pesa Till"),
+    BotCommand("upgrade",  " Upgrade to paid plan"),
+    BotCommand("refer",    "Refer a friend & get discount"),
+    BotCommand("settings", " Edit your profile"),
+    BotCommand("help",     "Show all commands"),
+    BotCommand("stop",     "Pause daily bot alerts"),
+    BotCommand("resume",   "Resume daily bot alerts"),
+]
+
+CMD_INDIVIDUAL = [
+    BotCommand("mystatus",      "Personal status (KRA/SHA)"),
+    BotCommand("tokens",        "Log electricity units"),
+    BotCommand("fuliza",        "Log Fuliza loan balance"),
+    BotCommand("subscribe",     "Add monthly bill reminder"),
+    BotCommand("upgrade",       " Upgrade to paid plan"),
+    BotCommand("refer",         "Refer a friend & get discount"),
+    BotCommand("settings",      " Edit your profile"),
+    BotCommand("help",          "Show all commands"),
+    BotCommand("stop",          "Pause daily bot alerts"),
+    BotCommand("resume",        "Resume daily bot alerts"),
+]
+
+
+async def set_contextual_commands(bot: Bot, chat_id: int, user_type: str) -> None:
+    """Helper to update command menu based on user scope (MENU-FIX-T1)."""
+    scope = BotCommandScopeChat(chat_id=chat_id)
+    cmds = CMD_BUSINESS if user_type == "business" else CMD_INDIVIDUAL
+    await bot.set_my_commands(cmds, scope=scope)
+    log.info("contextual_commands_updated", chat_id=chat_id, user_type=user_type)
+
+
+async def post_init(application: Application) -> None:
+    """Called once after the bot starts — set command menu and register webhooks."""
     try:
-        from apps.tg_bot.db import get_client
-        import apps.tg_bot.messages as M
-        
-        db = get_client()
-        
-        # ── 1. Check for Subscription Payment (MAZAO- prefix) ───────────────────
-        if parsed.bill_ref and parsed.bill_ref.startswith("MAZAO-"):
-            log.info("subscription_payment_detected", ref=parsed.bill_ref, amount=parsed.amount)
-            
-            # Match via Account Ref
-            pr_resp = db.table("payment_requests").select("*").eq("account_ref", parsed.bill_ref).eq("status", "pending").maybe_single().execute()
-            if pr_resp and pr_resp.data:
-                request_data = pr_resp.data
-                tenant_id = request_data["tenant_id"]
-                amount = float(parsed.amount)
-                
-                # Update Payment Request
-                db.table("payment_requests").update({
-                    "status": "confirmed",
-                    "confirmed_at": datetime.utcnow().isoformat()
-                }).eq("id", request_data["id"]).execute()
-                
-                # Determine Plan
-                new_plan = "biashara" if amount >= 2500 else "mtu_wenyewe"
-                
-                # Update Tenant
-                expires_at = (datetime.utcnow() + timedelta(days=30)).isoformat()
-                db.table("tenants").update({
-                    "plan": new_plan,
-                    "subscription_active": True,
-                    "subscription_expires_at": expires_at,
-                    "trial_started_at": None, # End trial logic upon payment
-                    "trial_ends_at": None
-                }).eq("id", tenant_id).execute()
-                
-                # Notify User
-                # Get tenant telegram_id
-                t_resp = db.table("tenants").select("telegram_id, referred_by, full_name, business_name").eq("id", tenant_id).maybe_single().execute()
-                if t_resp and t_resp.data:
-                    tenant_data = t_resp.data
-                    await bot.send_message(
-                        chat_id=tenant_data["telegram_id"],
-                        text=M.PAYMENT_CONFIRMED.format(
-                            plan_name=new_plan.title().replace("_", " "),
-                            amount=parsed.amount
-                        ),
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                    
-                    # P10-T4: Referral Reward
-                    if tenant_data.get("referred_by"):
-                        referrer_id = tenant_data["referred_by"]
-                        # Tag referrer for discount
-                        db.table("tenants").update({"referral_discount": True}).eq("id", referrer_id).execute()
-                        
-                        # Notify Referrer
-                        ref_resp = db.table("tenants").select("telegram_id").eq("id", referrer_id).maybe_single().execute()
-                        if ref_resp and ref_resp.data:
-                            name = tenant_data.get("business_name") or tenant_data.get("full_name") or "A friend"
-                            await bot.send_message(
-                                chat_id=ref_resp.data["telegram_id"],
-                                text=M.REFERRAL_SUCCESS_REFERRER.format(name=name),
-                                parse_mode=ParseMode.MARKDOWN
-                            )
-                return
+        # Register DEFAULT scope for all users (progressive disclosure)
+        await application.bot.set_my_commands(CMD_DEFAULT, scope=BotCommandScopeDefault())
+        log.info("default_bot_commands_registered", count=len(CMD_DEFAULT))
+
+        # P6-T3: Register Payment Provider Callback
+        app_url = os.getenv("FLY_APP_URL")
+        if app_url:
+            from apps.payments import get_provider
+            provider = get_provider()
+            webhook_url = f"{app_url.rstrip('/')}/payments/webhook"
+            success = await provider.register_callback_url(webhook_url)
+            if success:
+                log.info("payment_callback_registered", url=webhook_url)
             else:
-                log.warn("subscription_payment_unmatched", ref=parsed.bill_ref)
+                log.warn("payment_callback_registration_failed")
+
+    except Exception as e:
+        log.error("post_init_failed", error=str(e))
 
         # ── 2. Match Tenant for Live Feed (Regular Payment) ──────────────────
         tenant = None
