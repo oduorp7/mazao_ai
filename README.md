@@ -37,9 +37,21 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
     *   `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`
     *   `ANTHROPIC_API_KEY`
     *   `FLY_APP_URL` (Required for Webhooks)
-    *   `AT_USERNAME` / `AT_API_KEY` / `AT_SHORTCODE`
+    *   `INTASEND_PUBLISHABLE_KEY` / `INTASEND_SECRET_KEY` / `INTASEND_WEBHOOK_CHALLENGE`
 2.  **Database**: Run the contents of `apps/tg_bot/schema.sql` in the Supabase SQL Editor.
 3.  **Deploy**: `fly deploy` (Port 8080 exposed for health checks & webhooks).
+
+## 🛡️ Production Readiness (Phase 8 Checklist)
+
+- [x] **Environment Variables**: All 10 confirmed set in Fly.io (including `INTASEND_*` and `FLY_APP_URL`).
+- [x] **Supabase Security**: RLS policies active on `tenants`, `live_transactions`, and `payment_requests`.
+- [x] **Bot Deployment**: Running 24/7 on Fly.io (Region: `ams`), health checks passing.
+- [x] **Webhook Integration**: Consolidated to POST only; registered in Intasend Sandbox.
+- [ ] **ODPC Registration**: [ACTION REQUIRED] Data Controller registration pending.
+- [ ] **Safaricom Paybill**: [ACTION REQUIRED] Application for production paybill pending.
+- [ ] **Privacy Policy**: [ACTION REQUIRED] Hosted URL pending (currently local `PRIVACY_POLICY.md`).
+
+---
 
 ## 💻 Local Development
 

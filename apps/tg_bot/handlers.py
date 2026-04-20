@@ -41,6 +41,10 @@ from apps.agent.state import RawTransaction, TransactionType
 
 log = get_logger(__name__)
 
+# ── Global State for Rate Limiting (P8-T4) ──────────────────────────────────
+# Maps tenant_id -> list of timestamps of recent /upgrade attempts
+upgrade_rate_limit = {}
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _tg_id(update: Update) -> int:

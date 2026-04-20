@@ -460,5 +460,78 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
         name="Subscription bill reminders",
     )
 
+    # P8-T5: Subscription renewal detection
+    scheduler.add_job(
+        job_subscription_renewal_alerts,
+        CronTrigger(hour=9, minute=0, timezone=KENYA_TZ),
+        args=[bot],
+        id="subscription_renewal_alerts",
+        name="Subscription renewal tracking",
+    )
+
     log.info("scheduler_configured", job_count=len(scheduler.get_jobs()))
     return scheduler
+
+
+# ── Job 7: Subscription renewal detection (P8-T5) ───────────────────────────
+
+async def job_subscription_renewal_alerts(bot: Bot):
+    """
+    Checks for subscriptions expiring in 3 days or already expired.
+    Deactivates expired ones and warns about upcoming expiry.
+    """
+    from apps.tg_bot.db import get_client
+    import apps.tg_bot.messages as M
+    from datetime import datetime, timezone, timedelta
+    
+    db = get_client()
+    today = datetime.now(timezone.utc)
+    
+    # Get all active tenants
+    resp = db.table("tenants").select("*").eq("subscription_active", True).execute()
+    tenants = resp.data or []
+    
+    log.info("job_subscription_renewal_check_start", count=len(tenants))
+    
+    for t in tenants:
+        tid = t["telegram_id"]
+        expires_at_str = t.get("subscription_expires_at")
+        if not expires_at_str:
+            continue
+            
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            days_left = (expires_at - today).days
+            
+            upgrade_link = f"{os.getenv('FLY_APP_URL', 'https://mazao-ai.fly.dev')}/upgrade"
+            
+            # 1. Handle Expiry
+            if today > expires_at:
+                log.info("subscription_expired", telegram_id=tid)
+                db.table("tenants").update({
+                    "subscription_active": False,
+                    "status": "lapsed"
+                }).eq("id", t["id"]).execute()
+                
+                await bot.send_message(
+                    chat_id=tid,
+                    text=M.SUBSCRIPTION_EXPIRED.format(upgrade_link=upgrade_link),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+            # 2. Handle T-3 Reminder
+            elif 0 <= days_left <= 3:
+                log.info("subscription_renewal_reminder", telegram_id=tid, days_left=days_left)
+                await bot.send_message(
+                    chat_id=tid,
+                    text=M.RENEWAL_REMINDER.format(
+                        days_remaining=days_left,
+                        plan_name=t.get("plan", "hustler").title(),
+                        upgrade_link=upgrade_link
+                    ),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+        except Exception as exc:
+            log.error("renewal_check_failed", telegram_id=tid, error=str(exc))
+

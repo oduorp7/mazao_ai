@@ -97,6 +97,8 @@ CREATE INDEX IF NOT EXISTS idx_reports_period ON reports(period);
 
 -- Language preference for reports (P2-T3)
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS preferred_language TEXT DEFAULT 'en';
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_active BOOLEAN DEFAULT false;
 
 -- ── Migration: Phase 3 (P3-T4) ────────────────────────────────────────────────
 -- Store parsed statement summaries

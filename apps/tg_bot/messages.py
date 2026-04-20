@@ -403,6 +403,33 @@ INDIVIDUAL_STATUS_REDIRECT = "ℹ️ Please use /status for your business dashbo
 
 PAYMENT_RECEIVED = "💸 *Payment Received!*\n\n💰 *Amount:* KES {amount:,.2f}\n👤 *From:* {name} ({msisdn})\n🔢 *Ref:* {trans_id}\n\n_Your profit report has been updated._"
 
+PAYMENT_CONFIRMED = """
+✅ *Payment Received — Thank you!*
+
+Your Mazao AI subscription is now active on the *{plan_name}* plan.
+Amount: KES {amount:,.2f}
+
+Type /help to see all commands.
+"""
+
+RENEWAL_REMINDER = """
+🔔 *Subscription Renewal Reminder*
+
+Your Mazao AI *{plan_name}* subscription will expire in *{days_remaining} days*.
+To keep your daily reports and live feed active, please renew now.
+
+[Click here to renew / upgrade]({upgrade_link})
+"""
+
+SUBSCRIPTION_EXPIRED = """
+⚠️ *Subscription Expired*
+
+Your Mazao AI subscription has expired. Your daily reports and live feed have been paused.
+Please renew now to resume service.
+
+[Click here to renew / upgrade]({upgrade_link})
+"""
+
 TILL_REGISTRATION_PROMPT = "🛡️ *M-Pesa Till Registration*\n\nPlease enter your M-Pesa Till or Paybill number (5-7 digits) to enable real-time payment alerts."
 
 TILL_CONFIRMED = "✅ *Till Registered: {till_number}*\n\nMazao AI is now listening for payments to this number. You will receive an alert the moment a customer pays."

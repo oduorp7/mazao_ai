@@ -25,19 +25,7 @@ pipeline.py (agent), and db.py.
 import os
 import sys
 import asyncio
-from pathlib import Path
-
-# ── Windows stability fixes (MUST happen before other imports) ──────────────
-if sys.platform == "win32":
-    # Ensure emojis don't crash the console
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    
-    # SelectorEventLoop is mandatory for PTB + Windows stability
-    try:
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    except AttributeError:
-        pass
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -50,8 +38,6 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 from telegram.constants import ParseMode
-
-load_dotenv()
 
 from apps.tg_bot.handlers import (
     cmd_start,
@@ -77,6 +63,8 @@ from apps.tg_bot.handlers import (
 )
 from apps.tg_bot.scheduler import create_scheduler
 from apps.agent.utils.logging import get_logger, setup_logging
+
+load_dotenv()
 
 setup_logging()
 log = get_logger(__name__)
@@ -235,15 +223,8 @@ async def main() -> None:
         return web.Response(text="OK", status=200)
 
     async def payment_webhook(request):
-        """P6A2-T2: Provider-agnostic payment receiver with challenge validation."""
+        """P8-T2: Intasend webhooks are POST only. Challenge is in the body."""
         try:
-            # Handle GET challenge (Intasend Handshake)
-            if request.method == "GET":
-                challenge = request.query.get("challenge")
-                if challenge:
-                    return web.Response(text=challenge)
-                return web.Response(text="No challenge", status=400)
-
             payload = await request.json()
 
             # ── Webhook Challenge Validation (P6A2 Addendum) ─────────────
@@ -273,8 +254,7 @@ async def main() -> None:
 
     health_app = web.Application()
     health_app.router.add_get("/health", health_check)
-    health_app.router.add_get("/payments/confirm", payment_webhook) # Handshake
-    health_app.router.add_post("/payments/confirm", payment_webhook) # Webhook
+    health_app.router.add_post("/payments/confirm", payment_webhook)
     health_app.router.add_post("/payments/webhook", payment_webhook)
     
     runner = web.AppRunner(health_app)
@@ -334,9 +314,11 @@ async def process_live_transaction(bot, parsed):
                 new_plan = "biashara" if amount >= 2500 else "mtu_wenyewe"
                 
                 # Update Tenant
+                expires_at = (datetime.utcnow() + timedelta(days=30)).isoformat()
                 db.table("tenants").update({
                     "plan": new_plan,
                     "subscription_active": True,
+                    "subscription_expires_at": expires_at,
                     "trial_started_at": None, # End trial logic upon payment
                     "trial_ends_at": None
                 }).eq("id", tenant_id).execute()
