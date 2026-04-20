@@ -78,6 +78,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tid = _tg_id(update)
     log.info("cmd_start", telegram_id=tid)
 
+    # P10-T4: Handle Referral deep link (start=REF_CODE)
+    args = context.args
+    referred_by_id = None
+    if args and args[0].startswith("REF_"):
+        ref_code = args[0]
+        log.info("referral_link_detected", telegram_id=tid, ref_code=ref_code)
+        # Find referrer
+        referrer_resp = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: db.get_client().table("tenants").select("id").eq("referral_code", ref_code).execute()
+        )
+        if referrer_resp.data:
+            referred_by_id = referrer_resp.data[0]["id"]
+            log.info("referrer_found", referrer_id=referred_by_id)
+
     tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
     if tenant and tenant["status"] in ("active", "trial"):
@@ -105,7 +119,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     telegram_id=tid,
                     telegram_username=_username(update),
                     full_name=_full_name(update),
+                    referred_by=referred_by_id # P10-T4
                 )
+            )
+        elif referred_by_id:
+            # Update existing but un-onboarded tenant
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.update_tenant(tid, {"referred_by": referred_by_id})
             )
         return
 
@@ -121,15 +142,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     log.info("callback_received", telegram_id=tid, data=data)
     
     if data == "type_business":
-        db.set_conv_state(tid, "awaiting_name", data={"user_type": "business"})
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_name", data={"user_type": "business"}))
         # Create tenant row if not exists
-        if not db.get_tenant(tid):
-            db.create_tenant(
-                telegram_id=tid,
-                telegram_username=query.from_user.username,
-                full_name=query.from_user.full_name,
+        if not await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid)):
+            await asyncio.get_event_loop().run_in_executor(
+                None, 
+                lambda: db.create_tenant(
+                    telegram_id=tid,
+                    telegram_username=query.from_user.username,
+                    full_name=query.from_user.full_name,
+                )
             )
-        db.update_tenant(tid, {"user_type": "business"})
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"user_type": "business"}))
         await query.edit_message_text(M.WELCOME)
         
     elif data == "type_individual":
@@ -186,6 +210,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
             
+            # ── Onboarding Completion (P10-T2) ───────────────────────────
+            await asyncio.get_event_loop().run_in_executor(
+                None, lambda: db.update_tenant(tid, {"onboarding_completed": True})
+            )
+            tenant["onboarding_completed"] = True
+            # ─────────────────────────────────────────────────────────────
+
             # ── Founding Member Auto-Tag (P9-T2) ──────────────────────────
             # Set founding_member=true if total tenants <= 50
             total_tenants = await asyncio.get_event_loop().run_in_executor(
@@ -276,6 +307,43 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_privacy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Displays the privacy policy."""
     await _reply(update, M.PRIVACY_POLICY_TEXT)
+
+
+# ── /feedback (P10-T3) ────────────────────────────────────────────────────────
+
+async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Entry point for feedback collection."""
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+    
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_feedback"))
+    await _reply(update, M.FEEDBACK_PROMPT)
+
+
+# ── /refer (P10-T4) ───────────────────────────────────────────────────────────
+
+async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Displays unique referral link."""
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+        
+    code = tenant.get("referral_code")
+    if not code:
+        code = f"MAZAO-{str(tenant['id'])[:6].upper()}"
+        await asyncio.get_event_loop().run_in_executor(
+            None, lambda: db.update_tenant(tid, {"referral_code": code})
+        )
+        
+    bot_username = (await context.bot.get_me()).username
+    link = f"https://t.me/{bot_username}?start=REF_{code}"
+    
+    await _reply(update, M.REFERRAL_INFO.format(referral_link=link, code=code))
 
 
 # ── /upgrade (P7-T4) ─────────────────────────────────────────────────────────
@@ -1031,12 +1099,14 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     client = db.get_client()
     
-    # 1. Total Tenants
+    # 1. Total Tenants & Onboarding Stats (P10-T2)
     tenants_resp = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: client.table("tenants").select("plan, status").execute()
+        None, lambda: client.table("tenants").select("plan, status, onboarding_completed").execute()
     )
     tenants = tenants_resp.data or []
     total = len(tenants)
+    onboarded_count = sum(1 for t in tenants if t.get("onboarding_completed"))
+    completion_rate = (onboarded_count / total * 100) if total > 0 else 0
     
     # 2. Plan Breakdown
     plans = {"free": 0, "mtu_wenyewe": 0, "biashara": 0, "trial": 0}
@@ -1068,7 +1138,11 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     report = (
         "👑 *Chief Engineer Dashboard*\n\n"
-        f"👥 *Tenants:* {total}\n"
+        f"� *Onboarding (Funnel):*\n"
+        f"├─ Started: {total}\n"
+        f"├─ Completed: {onboarded_count}\n"
+        f"└─ Rate: {completion_rate:.1f}%\n\n"
+        f"👥 *Tenants by Plan:*\n"
         f"├─ Biashara: {plans['biashara']}\n"
         f"├─ Mtu Wenyewe: {plans['mtu_wenyewe']}\n"
         f"└─ Free/Trial: {plans['trial'] + plans['free']}\n\n"
@@ -1089,24 +1163,99 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     conv = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_conv_state(tid))
     state = conv["state"] if conv else "idle"
 
-    if state == "awaiting_till":
-        if re.match(r"^\d{5,7}$", text):
-            await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"till_number": text}))
+    # P10-T1: Command interruption check
+    if text.startswith("/"):
+        # If user sends a command while in a state, clear the state and handle command
+        if state != "idle":
+            log.info("state_cleared_by_command", telegram_id=tid, state=state, command=text)
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-            await _reply(update, M.TILL_CONFIRMED.format(till_number=text))
-        else:
+        # Command handlers are registered separately, but this ensures state doesn't block them
+        return
+
+    if state == "awaiting_name":
+        if len(text) < 2:
+            await _reply(update, "Please enter your business name.")
+            return
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"business_name": text}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_till"))
+        await _reply(update, M.ASK_MPESA_TILL.format(business_name=text))
+        return
+
+    if state == "awaiting_individual_name":
+        if len(text) < 2:
+            await _reply(update, "Please enter your full name.")
+            return
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"full_name": text}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_employment_status"))
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🏢 Employed", callback_data="emp_employed"),
+                InlineKeyboardButton("🛠️ Self-Employed", callback_data="emp_self_employed"),
+            ],
+            [InlineKeyboardButton("🚜 Farmer", callback_data="emp_farmer")],
+            [InlineKeyboardButton("🎓 Student/Other", callback_data="emp_other")]
+        ]
+        await _reply(update, M.INDIVIDUAL_ASK_EMPLOYMENT, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if state == "awaiting_feedback":
+        # P10-T3: Store and Forward Feedback
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: db.get_client().table("feedback").insert({
+                "tenant_id": str(tenant["id"]),
+                "message": text
+            }).execute()
+        )
+        
+        # Forward to admin
+        admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+        if admin_id:
+            name = tenant.get("business_name") or tenant.get("full_name") or "User"
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=M.FEEDBACK_FORWARD.format(name=name, user_type=tenant.get("user_type"), message=text),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            except Exception as e:
+                log.error("feedback_forward_failed", error=str(e))
+            
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        await _reply(update, M.FEEDBACK_RECEIVED)
+        return
+
+    if state == "awaiting_till":
+        # P10-T1: Validation (Digits only, 5-7 range)
+        clean_till = re.sub(r"[^0-9]", "", text)
+        if not clean_till or len(clean_till) < 5:
             await _reply(update, M.TILL_INVALID)
+            return
+            
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"mpesa_till": clean_till}))
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_language"))
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
+                InlineKeyboardButton("🇰🇪 Swahili", callback_data="lang_sw"),
+            ]
+        ]
+        await _reply(update, M.ASK_LANGUAGE, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if state == "awaiting_tokens":
         try:
+            # P10-T1: Validation (Numeric check)
             # Format: "units date" (e.g. "25.5 20/04/2026")
             parts = text.split()
             if len(parts) < 2:
                 await _reply(update, "Please enter both units and date. Example: `25.5 20/04/2026`")
                 return
             
-            units = float(parts[0])
+            units = float(parts[0].replace(",", ""))
             d_str = parts[1]
             p_date = datetime.strptime(d_str, "%d/%m/%Y").date()
             
@@ -1122,47 +1271,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 }).execute()
             )
             
-            # P4-T1: Projection math
-            # Get history
-            history = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: db.get_client().table("token_entries")
-                .select("*")
-                .eq("tenant_id", str(tenant["id"]))
-                .order("purchase_date", desc=True)
-                .limit(5)
-                .execute()
-            )
-            
-            daily_rate = 6.0 # Default for 3-5 persons
-            h_size = tenant.get("household_size", 4)
-            if h_size <= 2: daily_rate = 3.0
-            elif h_size >= 6: daily_rate = 10.0
-            
-            entries = history.data if history.data else []
-            if len(entries) >= 2:
-                # Calculate rate: (Newest - Oldest units) / days
-                # Simpler implementation: just use default as fallback as per P4-T1 logic
-                pass 
-
+            # P4-T1: Projection math (Default fallback)
+            daily_rate = 6.0 
             days_remaining = int(units / daily_rate)
             depletion_date = (datetime.utcnow() + timedelta(days=days_remaining)).strftime("%d %b %Y")
             
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             await _reply(update, f"⚡ *Token Recorded!*\n\nUnits: {units}\nEst. Daily Rate: {daily_rate} units\n\n🗓️ *Depletion Date:* {depletion_date}\n⏳ *Days left:* {days_remaining}")
-            return
-        except Exception as exc:
-            log.warning("token_parse_failed", error=str(exc))
-            await _reply(update, "❌ Invalid format. Please use: `units DD/MM/YYYY` (e.g., `30 20/04/2026`)")
-            return
+        except ValueError:
+            await _reply(update, M.TOKEN_INVALID_VALUE)
+        return
 
     if state == "awaiting_fuliza":
-        # Regex parse: balance and date
+        # P10-T1: Regex parse failure check
         bal_match = re.search(r"KES\s*([\d,]+(?:\.\d+)?)", text, re.IGNORECASE)
         date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{2,4})|(\d{4}-\d{1,2}-\d{1,2})", text)
         
         if not bal_match or not date_match:
-            await _reply(update, "❌ Could not find balance or due date in that text. Please forward the full SMS.")
+            await _reply(update, M.FULIZA_PARSE_FAILED)
             return
             
         try:
@@ -1186,11 +1312,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 due_date=due_date.strftime("%d %b %Y"),
                 days_until_due=days_left
             ))
-            return
         except Exception as exc:
             log.error("fuliza_parse_error", error=str(exc))
             await _reply(update, "❌ Error saving Fuliza entry.")
-            return
+        return
 
     if state == "awaiting_sub_name":
         if len(text) < 2:
@@ -1202,7 +1327,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if state == "awaiting_sub_amount":
         try:
-            # Clean KES prefix or commas
             clean_text = text.replace("KES", "").replace(",", "").strip()
             amount = float(clean_text)
             old_data = conv.get("data", {})
@@ -1223,7 +1347,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             data = conv.get("data", {})
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
             
-            # Save to DB
             await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: db.get_client().table("subscriptions").insert({
@@ -1234,7 +1357,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 }).execute()
             )
             
-            # Calculate next date
             today = datetime.utcnow()
             next_date = today.replace(day=day)
             if today.day >= day:
@@ -1248,11 +1370,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             ))
         except Exception as e:
             log.error("sub_save_failed", error=str(e))
-            await _reply(update, "❌ Error saving subscription. Please try again.")
+            await _reply(update, "❌ Error saving subscription.")
         return
 
     if state == "awaiting_upgrade_phone":
-        # Validate phone
         clean_phone = re.sub(r"[^0-9]", "", text)
         if not clean_phone or len(clean_phone) < 10:
             await _reply(update, "❌ Please enter a valid Kenyan phone number (e.g. 0712345678).")
@@ -1260,51 +1381,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
         tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
         
-        # ── Rate Limiting (P8-T4) ───────────────────────────────────────────
+        # ── Rate Limiting (P8-T4) ──
         now = datetime.utcnow()
         tenant_attempts = upgrade_rate_limit.get(tid, [])
-        # Remove timestamps older than 10 minutes
         tenant_attempts = [ts for ts in tenant_attempts if (now - ts).total_seconds() < 600]
-        
         if len(tenant_attempts) >= 3:
-            log.warn("upgrade_rate_limit_exceeded", telegram_id=tid)
-            await _reply(update, "⚠️ *Too many payment attempts.*\nPlease wait 10 minutes before trying again.")
+            await _reply(update, "⚠️ *Too many attempts.*\nPlease wait 10 minutes.")
             return
-            
-        # Record attempt
         tenant_attempts.append(now)
         upgrade_rate_limit[tid] = tenant_attempts
-        # ────────────────────────────────────────────────────────────────────
 
         pending_plan = conv.get("data", {}).get("pending_plan", "mtu_wenyewe")
         is_founding = tenant.get("founding_member", False)
+        has_referral_discount = tenant.get("referral_discount", False)
         
         if is_founding:
             amount = 1500 if pending_plan == "biashara" else 300
         else:
             amount = 2500 if pending_plan == "biashara" else 500
             
-        plan_name = "Mtu Wenyewe" if amount in (300, 500) else "Biashara"
+        if has_referral_discount:
+            amount = amount * 0.8
+            
+        plan_name = "Mtu Wenyewe" if amount in (240, 300, 400, 500) else "Biashara"
         
-        # Save phone to tenant
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"phone_number": clean_phone}))
-        
-        # Initiate STK Push (P7-T4)
         account_ref = f"MAZAO-{str(tenant['id'])[:8]}"
-        res = await initiate_stk_push(
-            phone_number=clean_phone,
-            amount=amount,
-            account_ref=account_ref,
-            narrative=f"Mazao AI {plan_name}"
-        )
+        res = await initiate_stk_push(phone_number=clean_phone, amount=amount, account_ref=account_ref, narrative=f"Mazao AI {plan_name}")
         
         if "error" in res:
             await _reply(update, M.PAYMENT_FAILED.format(upgrade_link="/upgrade"))
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             return
             
-        # Log request (P7-T1)
-        invoice_id = res.get("id") or res.get("invoice_id") # Intasend SDK returns 'id' for the invoice
+        invoice_id = res.get("id") or res.get("invoice_id")
         await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: db.get_client().table("payment_requests").insert({
@@ -1321,78 +1431,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
         return
 
-    if state == "awaiting_individual_name":
-        if len(text) < 2:
-            await _reply(update, "Please enter your full name.")
-            return
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"full_name": text}))
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_employment_status"))
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("🏢 Employed", callback_data="emp_employed"),
-                InlineKeyboardButton("🛠️ Self-Employed", callback_data="emp_self_employed"),
-            ],
-            [InlineKeyboardButton("🎓 Unemployed", callback_data="emp_unemployed")]
-        ]
-        await _reply(update, M.INDIVIDUAL_ASK_EMPLOYMENT, reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-
-    if state == "awaiting_name":
-        if len(text) < 2:
-            await _reply(update, "Please enter your business name.")
-            return
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"business_name": text}))
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_till"))
-        await _reply(update, M.ASK_MPESA_TILL.format(business_name=text))
-        return
-
-    if state == "awaiting_till":
-        if not re.match(r"^\d+$", text):
-            await _reply(update, "Please enter a valid Till number (digits only).")
-            return
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"mpesa_till": text, "status": "active"}))
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_language"))
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
-                InlineKeyboardButton("🇰🇪 Swahili", callback_data="lang_sw"),
-            ]
-        ]
-        await _reply(update, M.ASK_LANGUAGE, reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-
-    await _reply(update, M.UNKNOWN_MESSAGE)
-
-    # ── Idle state — not in onboarding ───────────────────────────────────
-
+    # ── Idle state fallback ───────────────────────────────────────────────
     tenant = db.get_tenant(tid)
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
 
-    # Check for common keywords and route helpfully
     text_lower = text.lower()
-
-    if any(k in text_lower for k in ["report", "summary", "mapato", "pesa"]):
+    if any(k in text_lower for k in ["report", "summary", "mapato"]):
         await cmd_report(update, context)
-        return
-
-    if any(k in text_lower for k in ["vat", "tax", "kodi"]):
+    elif any(k in text_lower for k in ["vat", "tax", "kodi"]):
         await cmd_vat(update, context)
-        return
-
-    if any(k in text_lower for k in ["deadline", "kra", "due", "filing"]):
-        await cmd_kra(update, context)
-        return
-
-    if any(k in text_lower for k in ["help", "commands", "what can"]):
+    elif any(k in text_lower for k in ["help", "commands"]):
         await cmd_help(update, context)
-        return
-
-    # True fallback
-    await _reply(update, M.UNKNOWN_MESSAGE)
+    else:
+        await _reply(update, M.UNKNOWN_MESSAGE)
 
 
 # ── Bot commands menu (shown in Telegram's / menu) ────────────────────────────
@@ -1412,6 +1465,8 @@ BOT_COMMANDS = [
     BotCommand("subscriptions", "List active bills"),
     BotCommand("till",          "Register M-Pesa Till"),
     BotCommand("privacy",       "Read Privacy Policy"),
+    BotCommand("feedback",      "Send feedback/report issue"),
+    BotCommand("refer",         "Refer a friend & get discount"),
     BotCommand("language",      "Change language"),
     BotCommand("stop",          "Pause bot alerts"),
     BotCommand("resume",        "Resume bot alerts"),

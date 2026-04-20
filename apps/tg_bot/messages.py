@@ -491,6 +491,49 @@ TILL_CONFIRMED = "✅ *Till Registered: {till_number}*\n\nMazao AI is now listen
 
 TILL_INVALID = "❌ *Invalid Till Number*\nPlease enter 5-7 digits only (e.g. 123456)."
 
+NOT_ONBOARDED = "👋 *Wait! Let's get to know you first.*\n\nPlease type /start to complete your profile before using this command. It only takes 30 seconds!"
+
+TOKEN_INVALID_VALUE = "❌ *Invalid Units*\nPlease enter a numeric value for electricity units (e.g. `25.5`)."
+
+FULIZA_PARSE_FAILED = "❌ *Could not parse Fuliza SMS*\nPlease ensure you forwarded the correct M-Pesa Fuliza message containing the amount and due date."
+
+FEEDBACK_PROMPT = "📝 *Send us your feedback*\n\nPlease type your feedback or report an issue below. Your message will be sent directly to our engineering team."
+
+FEEDBACK_RECEIVED = "✅ *Feedback Received*\n\nThank you for helping us improve Mazao AI! Our team will review your message."
+
+FEEDBACK_FORWARD = "📩 *New Feedback from {name} ({user_type}):*\n\n{message}"
+
+REFERRAL_INFO = """
+🎁 *Mazao AI Referral Program*
+
+Share the love and save money!
+1. Share your unique link:
+`{referral_link}`
+
+2. When a friend subscribes, you get **20% OFF** your next month!
+
+Your Referral Code: `{code}`
+"""
+
+REFERRAL_SUCCESS_REFERRER = "🎉 *Referral Success!*\nYour friend *{name}* just subscribed! You've earned a **20% discount** on your next renewal."
+
+ADMIN_DAILY_DIGEST = """
+📊 *Mazao AI Daily Briefing*
+
+🗓 *Last 24 Hours:*
+👤 New Tenants: {new_tenants}
+💰 Confirmed Revenue: KES {revenue:,.0f} ({payments_count} txns)
+
+🚀 *Active Pipeline:*
+⏳ Active Trials: {active_trials}
+🎯 Expiring (3 days): {expiring_trials}
+
+📝 *Feedback:*
+💬 New Messages: {feedback_count}
+
+_Keep building!_
+"""
+
 TILL_BUSINESS_ONLY = "ℹ️ Real-time Till monitoring is only available for Business accounts. Type /start to update your profile if needed."
 
 PROVIDER_REGISTRATION_SUCCESS = "🚀 *Payment Bridge Active*\nReal-time feed via {provider} is connected."

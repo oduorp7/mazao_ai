@@ -12,7 +12,7 @@ event loop as the Telegram bot — no separate process needed.
 
 from __future__ import annotations
 
-import sys
+import os
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,6 +21,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from telegram import Bot
 from telegram.constants import ParseMode
+from telegram.ext import ContextTypes # P10-T5
 
 import apps.tg_bot.db as db
 import apps.tg_bot.messages as M
@@ -32,11 +33,79 @@ log = get_logger(__name__)
 KENYA_TZ = "Africa/Nairobi"
 
 
+# ── Job 0: Admin Daily Digest (P10-T5) ────────────────────────────────────────
+
+async def job_admin_daily_digest(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """P10-T5: Sends a daily stats digest to Chief Engineer."""
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+    if not admin_id:
+        log.warn("admin_daily_digest_skipped", reason="ADMIN_TELEGRAM_ID_not_set")
+        return
+
+    client = db.get_client()
+    now = datetime.utcnow()
+    last_24h = (now - timedelta(days=1)).isoformat()
+    three_days_out = (now + timedelta(days=3)).isoformat()
+
+    # 1. New Tenants
+    new_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("tenants").select("id", count="exact").gte("created_at", last_24h).execute()
+    )
+    new_tenants = new_resp.count or 0
+
+    # 2. Payments (last 24h)
+    rev_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("payment_requests").select("amount").eq("status", "confirmed").gte("confirmed_at", last_24h).execute()
+    )
+    rev_data = rev_resp.data or []
+    revenue = sum(float(r["amount"]) for r in rev_data)
+    payments_count = len(rev_data)
+
+    # 3. Active Trials
+    trials_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("tenants").select("id", count="exact").eq("plan", "trial").execute()
+    )
+    active_trials = trials_resp.count or 0
+
+    # 4. Expiring Trials (3 days)
+    expiring_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("tenants").select("id", count="exact").eq("plan", "trial").lte("trial_ends_at", three_days_out).execute()
+    )
+    expiring_trials = expiring_resp.count or 0
+
+    # 5. Feedback (last 24h)
+    fb_resp = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: client.table("feedback").select("id", count="exact").gte("created_at", last_24h).execute()
+    )
+    feedback_count = fb_resp.count or 0
+
+    digest = M.ADMIN_DAILY_DIGEST.format(
+        new_tenants=new_tenants,
+        revenue=revenue,
+        payments_count=payments_count,
+        active_trials=active_trials,
+        expiring_trials=expiring_trials,
+        feedback_count=feedback_count
+    )
+
+    try:
+        await context.bot.send_message(
+            chat_id=admin_id,
+            text=digest,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        log.info("admin_daily_digest_sent", telegram_id=admin_id)
+    except Exception as e:
+        log.error("admin_daily_digest_failed", error=str(e))
+
+
 # ── Job 1: Daily reports ──────────────────────────────────────────────────────
 
-async def job_daily_reports(bot: Bot) -> None:
+async def job_daily_reports(context: ContextTypes.DEFAULT_TYPE) -> None:
     tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
     log.info("daily_reports_start", tenant_count=len(tenants))
+    
+    bot = context.bot
 
     for tenant in tenants:
         tid = tenant["telegram_id"]

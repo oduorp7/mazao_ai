@@ -41,35 +41,34 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 2.  **Database**: Run the contents of `apps/tg_bot/schema.sql` in the Supabase SQL Editor.
 3.  **Deploy**: `fly deploy` (Port 8080 exposed for health checks & webhooks).
 
-## 🛡️ Production Readiness (Phase 9 Checklist)
+## 🛡️ Production Readiness (Phase 10 Checklist)
 
 - [x] **Environment Variables**: All 11 confirmed set in Fly.io (including `INTASEND_*`, `FLY_APP_URL`, and `ADMIN_TELEGRAM_ID`).
-- [x] **Supabase Security**: RLS policies active on `tenants`, `live_transactions`, and `payment_requests`.
-- [x] **Bot Deployment**: Running 24/7 on Fly.io (Region: `ams`), health checks passing.
-- [x] **Webhook Integration**: Consolidated to POST only; registered in Intasend Sandbox.
-- [x] **Privacy Policy**: Deliverable via `/privacy` command.
-- [x] **Founding Member Pricing**: Active for first 50 customers.
+- [x] **Stability**: Command handlers hardened for edge cases (non-numeric units, pre-onboarding checks).
+- [x] **Feedback Loop**: Deliverable via `/feedback` command; auto-forwards to Chief Engineer.
+- [x] **Organic Growth**: Referral program active via `/refer` (20% discount reward).
+- [x] **Admin Visibility**: Daily digest at 8:00 AM EAT and invisible `/admin` dashboard.
 - [ ] **ODPC Registration**: [ACTION REQUIRED] Data Controller registration pending.
 - [ ] **Safaricom Paybill**: [ACTION REQUIRED] Application for production paybill pending.
 - [ ] **Privacy Policy URL**: [ACTION REQUIRED] Hosted URL pending (currently bot-only).
 
 ## 🚀 Activation & Onboarding
 
-### How to Activate Daraja (When Paybill Approved)
-1. Set the following Fly.io secrets:
-   - `DARAJA_CONSUMER_KEY`
-   - `DARAJA_CONSUMER_SECRET`
-   - `DARAJA_SHORTCODE`
-2. Set `PAYMENT_PROVIDER=daraja`.
-3. Run `fly deploy`.
+### First Customer Acquisition Guide
+**What to say to a business owner:**
+> "Hey [Name], I'm testing a new tool called Mazao AI that automates your M-Pesa bookkeeping and tax estimates. It's built for Kenyan SMEs. You just forward your statements or register your Till, and it handles the rest. Want to try it? I can set you up as a Founding Member (KES 300/mo instead of 500)."
 
-### First Customer Onboarding Guide
-1. **Welcome**: Tell them to type `/start` in the bot.
-2. **Setup**: They will select "Business Owner" and enter their business name.
-3. **Agreement**: They must accept the privacy policy (noted in `/start`).
-4. **Trial**: They immediately get a 14-day free trial.
-5. **Founding Discount**: First 10 (up to 50) get the founding member badge and KES 300/mo pricing automatically.
-6. **Automation**: Mazao AI will automatically start tracking their Till once registered via `/till`.
+**The Demo:**
+1. Open [@MazaoAIBot](https://t.me/MazaoAIBot).
+2. Type `/start` and select "Business Owner".
+3. Forward a recent M-Pesa statement SMS.
+4. Type `/report` to see the AI analysis.
+5. Register a Till via `/till` to see real-time alerts.
+
+## ⚠️ Known Limitations (April 2026)
+- **Daraja Approval**: Real-time feed via direct Daraja integration is pending Paybill approval. Currently uses Africa's Talking / Intasend bridge.
+- **Statement Parsing**: Supports standard M-Pesa business and individual statement formats. Custom bank formats pending.
+- **Payments**: STK Push currently runs in Intasend Sandbox mode.
 
 ---
 

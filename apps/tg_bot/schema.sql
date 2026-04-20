@@ -100,6 +100,19 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS preferred_language TEXT DEFAULT 'en
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_active BOOLEAN DEFAULT false;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS founding_member BOOLEAN DEFAULT false;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT false;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS referral_code TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS referred_by UUID REFERENCES tenants(id);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS referral_discount BOOLEAN DEFAULT false;
+
+-- ── Feedback Table (P10-T3) ──────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID REFERENCES tenants(id),
+    message         TEXT NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ── Migration: Phase 3 (P3-T4) ────────────────────────────────────────────────
 -- Store parsed statement summaries

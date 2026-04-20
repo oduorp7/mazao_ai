@@ -36,7 +36,9 @@ from telegram.ext import (
     filters,
     ContextTypes,
     CallbackQueryHandler,
+    TypeHandler, # P10-T5
 )
+from telegram.request import HTTPXRequest # P10-T5
 from telegram.constants import ParseMode
 
 from apps.tg_bot.handlers import (
@@ -49,6 +51,8 @@ from apps.tg_bot.handlers import (
     cmd_mystatus,
     cmd_language,
     cmd_privacy,
+    cmd_feedback,
+    cmd_refer,
     cmd_upgrade,
     cmd_admin,
     cmd_statement,
@@ -64,61 +68,20 @@ from apps.tg_bot.handlers import (
     handle_photo,
     BOT_COMMANDS,
 )
-from apps.tg_bot.scheduler import create_scheduler
+from apps.tg_bot.scheduler import (
+    job_daily_reports,
+    job_deadline_alerts,
+    job_trial_warnings,
+    job_subscription_renewal_alerts,
+    job_admin_daily_digest, # P10-T5
+)
 from apps.agent.utils.logging import get_logger, setup_logging
+from datetime import time # P10-T5
 
 load_dotenv()
 
 setup_logging()
 log = get_logger(__name__)
-
-
-def _check_env() -> None:
-    """Assertion: Startup audit (P6-T8). Failure on core vars causes clean exit."""
-    core = [
-        "TELEGRAM_BOT_TOKEN",
-        "SUPABASE_URL",
-        "SUPABASE_SERVICE_KEY",
-        "ANTHROPIC_API_KEY",
-        "FLY_APP_URL",
-    ]
-    payment = ["INTASEND_PUBLISHABLE_KEY", "INTASEND_SECRET_KEY", "PAYMENT_PROVIDER"]
-    
-    missing_core = [k for k in core if not os.getenv(k)]
-    if missing_core:
-        log.error("critical_env_missing", vars=missing_core)
-        print(f"\n❌  CRITICAL: Missing environment variables: {', '.join(missing_core)}")
-        print("    Bot cannot start without these core configurations.\n")
-        sys.exit(1)
-
-    missing_payment = [k for k in payment if not os.getenv(k)]
-    if missing_payment:
-        log.warn("payment_env_missing", vars=missing_payment, mode="statement_only")
-        print(f"\n⚠️   WARNING: Payment variables missing: {', '.join(missing_payment)}")
-        print("    Bot will run in 'Statement Upload Only' mode.\n")
-
-
-async def post_init(application: Application) -> None:
-    """Called once after the bot starts — set command menu and register webhooks."""
-    try:
-        await application.bot.set_my_commands(BOT_COMMANDS)
-        log.info("bot_commands_registered", count=len(BOT_COMMANDS))
-
-        # P6-T3: Register Payment Provider Callback
-        app_url = os.getenv("FLY_APP_URL")
-        if app_url:
-            from apps.payments import get_provider
-            provider = get_provider()
-            webhook_url = f"{app_url.rstrip('/')}/payments/webhook"
-            success = await provider.register_callback_url(webhook_url)
-            if success:
-                log.info("payment_callback_registered", url=webhook_url)
-            else:
-                log.warn("payment_callback_registration_failed")
-
-    except Exception as e:
-        log.error("post_init_failed", error=str(e))
-
 
 async def main() -> None:
     _check_env()
@@ -128,9 +91,6 @@ async def main() -> None:
     log.info("bot_starting")
 
     # ── Initialize application ────────────────────────────────────────────
-    from telegram.request import HTTPXRequest
-
-    # Use custom timeouts to overcome local network instability
     request = HTTPXRequest(
         connect_timeout=20.0,
         read_timeout=20.0,
@@ -146,8 +106,15 @@ async def main() -> None:
         .build()
     )
 
+    # ── Job 0: Admin Daily Digest (P10-T5) ──────────────────────────────────
+    # Runs at 08:00 AM EAT daily
+    app.job_queue.run_daily(
+        job_admin_daily_digest,
+        time=time(hour=8, minute=0, second=0),
+        name="admin_daily_digest"
+    )
+
     # ── High-level monitor ────────────────────────────────────────────────
-    from telegram.ext import TypeHandler
     async def monitor(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.info("raw_update_received", update_type=type(update).__name__)
         if isinstance(update, Update) and update.effective_message:
@@ -165,6 +132,8 @@ async def main() -> None:
     app.add_handler(CommandHandler("mystatus", cmd_mystatus))
     app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("privacy",  cmd_privacy))
+    app.add_handler(CommandHandler("feedback", cmd_feedback))
+    app.add_handler(CommandHandler("refer",    cmd_refer))
     app.add_handler(CommandHandler("upgrade",  cmd_upgrade))
     app.add_handler(CommandHandler("admin",    cmd_admin))
     app.add_handler(CommandHandler("statement", cmd_statement))
@@ -205,7 +174,8 @@ async def main() -> None:
 
     app.add_error_handler(error_handler)
 
-    # ── Start scheduler ───────────────────────────────────────────────────
+    # ── Start scheduler (APScheduler version) ───────────────────────────
+    from apps.tg_bot.scheduler import create_scheduler
     scheduler = create_scheduler(app.bot)
     scheduler.start()
     log.info("scheduler_started")
@@ -285,10 +255,14 @@ async def main() -> None:
         log.info("bot_shutdown_start")
         await app.stop()
         await app.shutdown()
+        await runner.cleanup()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
 
 
 async def process_live_transaction(bot, parsed):
@@ -331,16 +305,33 @@ async def process_live_transaction(bot, parsed):
                 
                 # Notify User
                 # Get tenant telegram_id
-                t_resp = db.table("tenants").select("telegram_id").eq("id", tenant_id).maybe_single().execute()
+                t_resp = db.table("tenants").select("telegram_id, referred_by, full_name, business_name").eq("id", tenant_id).maybe_single().execute()
                 if t_resp and t_resp.data:
+                    tenant_data = t_resp.data
                     await bot.send_message(
-                        chat_id=t_resp.data["telegram_id"],
+                        chat_id=tenant_data["telegram_id"],
                         text=M.PAYMENT_CONFIRMED.format(
                             plan_name=new_plan.title().replace("_", " "),
                             amount=parsed.amount
                         ),
                         parse_mode=ParseMode.MARKDOWN
                     )
+                    
+                    # P10-T4: Referral Reward
+                    if tenant_data.get("referred_by"):
+                        referrer_id = tenant_data["referred_by"]
+                        # Tag referrer for discount
+                        db.table("tenants").update({"referral_discount": True}).eq("id", referrer_id).execute()
+                        
+                        # Notify Referrer
+                        ref_resp = db.table("tenants").select("telegram_id").eq("id", referrer_id).maybe_single().execute()
+                        if ref_resp and ref_resp.data:
+                            name = tenant_data.get("business_name") or tenant_data.get("full_name") or "A friend"
+                            await bot.send_message(
+                                chat_id=ref_resp.data["telegram_id"],
+                                text=M.REFERRAL_SUCCESS_REFERRER.format(name=name),
+                                parse_mode=ParseMode.MARKDOWN
+                            )
                 return
             else:
                 log.warn("subscription_payment_unmatched", ref=parsed.bill_ref)
