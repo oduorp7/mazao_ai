@@ -72,7 +72,7 @@ from apps.tg_bot.handlers import (
 from apps.tg_bot.scheduler import (
     job_daily_reports,
     job_deadline_alerts,
-    job_trial_warnings,
+    job_trial_alerts,
     job_subscription_renewal_alerts,
     job_admin_daily_digest, # P10-T5
 )
@@ -267,7 +267,7 @@ if __name__ == "__main__":
         pass
 
 
-# ── Contextual Command Sets (MENU-FIX-T1) ──────────────────────────────
+    # ── Contextual Command Sets (MENU-FIX-T1) ──────────────────────────────
 
 CMD_DEFAULT = [
     BotCommand("start",    "Start Mazao AI & Onboarding"),
@@ -333,9 +333,81 @@ async def post_init(application: Application) -> None:
     except Exception as e:
         log.error("post_init_failed", error=str(e))
 
+
+async def process_live_transaction(bot: Bot, parsed):
+    """P6-T2 & P7-T5: Routes transaction to tenant or subscription processor."""
+    try:
+        from apps.tg_bot.db import get_client
+        import apps.tg_bot.messages as M
+        
+        db = get_client()
+        
+        # ── 1. Check for Subscription Payment (MAZAO- prefix) ───────────────────
+        if parsed.bill_ref and parsed.bill_ref.startswith("MAZAO-"):
+            log.info("subscription_payment_detected", ref=parsed.bill_ref, amount=parsed.amount)
+            
+            # Match via Account Ref
+            pr_resp = db.table("payment_requests").select("*").eq("account_ref", parsed.bill_ref).eq("status", "pending").maybe_single().execute()
+            if pr_resp and pr_resp.data:
+                request_data = pr_resp.data
+                tenant_id = request_data["tenant_id"]
+                amount = float(parsed.amount)
+                
+                # Update Payment Request
+                db.table("payment_requests").update({
+                    "status": "confirmed",
+                    "confirmed_at": datetime.utcnow().isoformat()
+                }).eq("id", request_data["id"]).execute()
+                
+                # Determine Plan
+                new_plan = "biashara" if amount >= 2500 else "mtu_wenyewe"
+                
+                # Update Tenant
+                expires_at = (datetime.utcnow() + timedelta(days=30)).isoformat()
+                db.table("tenants").update({
+                    "plan": new_plan,
+                    "subscription_active": True,
+                    "subscription_expires_at": expires_at,
+                    "trial_started_at": None, # End trial logic upon payment
+                    "trial_ends_at": None
+                }).eq("id", tenant_id).execute()
+                
+                # Notify User
+                # Get tenant telegram_id
+                t_resp = db.table("tenants").select("telegram_id, referred_by, full_name, business_name").eq("id", tenant_id).maybe_single().execute()
+                if t_resp and t_resp.data:
+                    tenant_data = t_resp.data
+                    await bot.send_message(
+                        chat_id=tenant_data["telegram_id"],
+                        text=M.PAYMENT_CONFIRMED.format(
+                            plan_name=new_plan.title().replace("_", " "),
+                            amount=parsed.amount
+                        ),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    
+                    # P10-T4: Referral Reward
+                    if tenant_data.get("referred_by"):
+                        referrer_id = tenant_data["referred_by"]
+                        # Tag referrer for discount
+                        db.table("tenants").update({"referral_discount": True}).eq("id", referrer_id).execute()
+                        
+                        # Notify Referrer
+                        ref_resp = db.table("tenants").select("telegram_id").eq("id", referrer_id).maybe_single().execute()
+                        if ref_resp and ref_resp.data:
+                            name = tenant_data.get("business_name") or tenant_data.get("full_name") or "A friend"
+                            await bot.send_message(
+                                chat_id=ref_resp.data["telegram_id"],
+                                text=M.REFERRAL_SUCCESS_REFERRER.format(name=name),
+                                parse_mode=ParseMode.MARKDOWN
+                            )
+                return
+            else:
+                log.warn("subscription_payment_unmatched", ref=parsed.bill_ref)
+
         # ── 2. Match Tenant for Live Feed (Regular Payment) ──────────────────
         tenant = None
-        resp = db.table("tenants").select("*").eq("till_number", parsed.bill_ref).maybe_single().execute()
+        resp = db.table("tenants").select("*").eq("mpesa_till", parsed.bill_ref).maybe_single().execute()
         if resp and resp.data:
             tenant = resp.data
         else:

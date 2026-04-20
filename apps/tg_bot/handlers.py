@@ -501,6 +501,10 @@ async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             days_left=f"{days_left} days" if days_left >= 0 else "OVERDUE"
         )
         
+    # CF-1: Proactive redaction of KRA PIN patterns (A0xxxxxxxB)
+    import re
+    text = re.sub(r'\b[A-P]\d{9}[A-Z]\b', '[REDACTED]', text)
+    
     await _reply(update, text)
 
 
@@ -934,6 +938,8 @@ async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             overdue_flag=overdue_flag,
         )
 
+    await _reply(update, text)
+
 # ── /tokens (P4-T1) ─────────────────────────────────────────────────────────
 
 async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -995,34 +1001,38 @@ async def cmd_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await _reply(update, M.NOT_REGISTERED)
         return
     
-    subs = await asyncio.get_event_loop().run_in_executor(
-        None, 
-        lambda: db.get_client().table("subscriptions").select("*").eq("tenant_id", str(tenant["id"])).execute()
-    )
-    
-    if not subs.data:
-        await _reply(update, M.SUBSCRIPTIONS_EMPTY)
-        return
-    
-    text = M.SUBSCRIPTIONS_LIST_HEADER
-    today = datetime.utcnow()
-    
-    for s in subs.data:
-        # Calculate next renewal date
-        day = s["renewal_day"]
-        try:
-            next_date = today.replace(day=day)
-            if today.day >= day:
-                # Move to next month
-                next_date = (next_date + timedelta(days=32)).replace(day=day)
-        except ValueError:
-            # Handle Feb 29-31 if renewal_day is set high (schema restricts to 28 so should be safe)
-            next_date = (today + timedelta(days=30)).replace(day=1)
+    try:
+        subs = await asyncio.get_event_loop().run_in_executor(
+            None, 
+            lambda: db.get_client().table("subscriptions").select("*").eq("tenant_id", str(tenant["id"])).execute()
+        )
+        
+        if not subs.data:
+            await _reply(update, M.SUBSCRIPTIONS_EMPTY)
+            return
+        
+        text = M.SUBSCRIPTIONS_LIST_HEADER
+        today = datetime.utcnow()
+        
+        for s in subs.data:
+            # Calculate next renewal date
+            day = s["renewal_day"]
+            try:
+                next_date = today.replace(day=day)
+                if today.day >= day:
+                    # Move to next month
+                    next_date = (next_date + timedelta(days=32)).replace(day=day)
+            except ValueError:
+                # Handle Feb 29-31 if renewal_day is set high (schema restricts to 28 so should be safe)
+                next_date = (today + timedelta(days=30)).replace(day=1)
 
-        days_left = (next_date.date() - today.date()).days
-        text += f"• *{s['name']}*: KES {s['amount_kes']:,.0f} (due {next_date.strftime('%d %b')}, *{days_left}d*)\n"
-    
-    await _reply(update, text)
+            days_left = (next_date.date() - today.date()).days
+            text += f"• *{s['name']}*: KES {s['amount_kes']:,.0f} (due {next_date.strftime('%d %b')}, *{days_left}d*)\n"
+        
+        await _reply(update, text)
+    except Exception as exc:
+        log.error("cmd_subscriptions_failed", error=str(exc))
+        await _reply(update, "⚠️ *Error retrieving subscriptions.*\nPlease try again later.")
 
 
 # ── /till (P6-T5) ─────────────────────────────────────────────────────────────
@@ -1136,6 +1146,10 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     # ── 6. Edit Prompt ─────────────────────────────────────────────────────
     report += "⚙️ Edit your details: /settings"
+
+    # CF-1: Proactive redaction of KRA PIN patterns
+    import re
+    report = re.sub(r'\b[A-P]\d{9}[A-Z]\b', '[REDACTED]', report)
 
     await _reply(update, report)
 
