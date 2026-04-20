@@ -8,7 +8,7 @@ Mazao AI ("we," "us," or "our") is committed to protecting your privacy. This Pr
 We collect only the minimum data necessary to provide our services:
 - **Telegram Identification**: Your Telegram ID and username to maintain your account.
 - **Business Data**: Your business name and M-Pesa Till/Paybill number (if provided).
-- **Individual Data**: Your name, KRA PIN (for labeling purposes), and employment status.
+- **Individual Data**: Your name and employment status.
 - **Transaction History**: Data extracted from M-Pesa statements (CSV/PDF) or SMS messages you explicitly share with the bot.
 
 ## 2. Why We Collect Your Information
