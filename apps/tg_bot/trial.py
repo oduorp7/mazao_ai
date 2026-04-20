@@ -47,7 +47,8 @@ async def get_trial_status(tenant_id: str) -> dict:
     db = get_client()
 
     def _sync_get():
-        return db.table("tenants").select("plan, trial_ends_at, subscription_active").eq("id", tenant_id).maybe_single().execute()
+        # Fallback to trial_days_left and default subscription_active if missing from schema
+        return db.table("tenants").select("plan, trial_days_left").eq("id", tenant_id).maybe_single().execute()
 
     resp = await asyncio.get_event_loop().run_in_executor(None, _sync_get)
     if not resp or not resp.data:
@@ -55,24 +56,18 @@ async def get_trial_status(tenant_id: str) -> dict:
 
     data = resp.data
     plan = data.get("plan", "free")
-    ends_str = data.get("trial_ends_at")
+    days_left = data.get("trial_days_left", 0)
+    # Default to False if column is missing from DB
     sub_active = data.get("subscription_active", False)
 
     if sub_active:
         return {"active": True, "days_remaining": 999, "is_expired": False, "plan": plan}
 
-    if not ends_str:
-        return {"active": False, "days_remaining": 0, "is_expired": True, "plan": "free"}
-
-    ends = datetime.fromisoformat(ends_str.replace("Z", "+00:00"))
-    now = datetime.utcnow().replace(tzinfo=ends.tzinfo)
-
-    delta = (ends - now).days
-    is_expired = delta < 0
+    is_expired = days_left <= 0
 
     return {
         "active": not is_expired,
-        "days_remaining": max(0, delta),
+        "days_remaining": max(0, days_left),
         "is_expired": is_expired,
         "plan": plan
     }

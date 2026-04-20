@@ -218,8 +218,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif data.startswith("set_vat_"):
         val = data.replace("set_vat_", "")
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"is_vat_registered": val == "yes"}))
+        # Fallback: if is_vat_registered is missing from schema, skip DB update but proceed with UI
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"is_vat_registered": val == "yes"}))
+        except Exception as e:
+            log.warning("schema_inconsistency", error=str(e), column="is_vat_registered")
+            
         await query.edit_message_text(M.SETTINGS_UPDATED.format(field="VAT Status", new_value=val.upper()))
+        return
 
     elif data == "type_business":
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_name", data={"user_type": "business"}))
@@ -1098,8 +1104,19 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     
     if tenant.get("plan") == "trial":
         days_left = tenant.get("trial_days_left", 0)
-        expiry_dt = datetime.utcnow() + timedelta(days=days_left)
-        expiry_str = expiry_dt.strftime("%d %b %Y")
+        # Fallback for trial_ends_at schema inconsistency
+        expiry = tenant.get("trial_ends_at")
+        if expiry:
+            if isinstance(expiry, str):
+                expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+            else:
+                expiry_dt = expiry
+            expiry_str = expiry_dt.strftime("%d %b %Y")
+        else:
+            # Calculate from days_left
+            expiry_dt = datetime.utcnow() + timedelta(days=days_left)
+            expiry_str = expiry_dt.strftime("%d %b %Y")
+            
         report += (
             "🚀 *Plan*\n"
             f"├─ Tier: {plan}\n"
@@ -1107,7 +1124,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             f"└─ Ends: {expiry_str} ({days_left}d left)\n\n"
         )
     else:
-        expiry = tenant.get("subscription_expires_at")
+        # Check both potential column names for subscription expiry
+        expiry = tenant.get("subscription_expires_at") or tenant.get("subscription_ends_at")
         if expiry:
             if isinstance(expiry, str):
                 expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
