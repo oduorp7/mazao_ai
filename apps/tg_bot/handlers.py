@@ -1558,24 +1558,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # ── Bot commands menu (shown in Telegram's / menu) ────────────────────────────
 
 BOT_COMMANDS = [
+    # (1) Core
+    BotCommand("start",         "Start Mazao AI & Onboarding"),
     BotCommand("help",          "Show all commands"),
-    BotCommand("upgrade",       "🚀 Upgrade to paid plan"),
-    BotCommand("status",        "Business dashboard"),
-    BotCommand("settings",      "⚙️ Edit your profile"),
-    BotCommand("mystatus",      "Personal dashboard"),
+    
+    # (2) Dashboard
+    BotCommand("status",        "Business Dashboard"),
+    BotCommand("mystatus",      "Personal status (KRA/SHA)"),
     BotCommand("report",        "Generate profit report"),
-    BotCommand("vat",           "Show VAT estimate"),
-    BotCommand("kra",           "Show tax deadlines"),
     BotCommand("statement",     "Show parsing summary"),
+    BotCommand("vat",           "Show VAT estimate"),
+    BotCommand("kra",           "Show next deadlines"),
+    
+    # (3) Utilities
     BotCommand("tokens",        "Log electricity units"),
-    BotCommand("fuliza",        "Log Fuliza loan"),
-    BotCommand("subscribe",     "Add monthly bill"),
-    BotCommand("subscriptions", "List active bills"),
+    BotCommand("fuliza",        "Log Fuliza loan balance"),
     BotCommand("till",          "Register M-Pesa Till"),
-    BotCommand("privacy",       "Read Privacy Policy"),
-    BotCommand("feedback",      "Send feedback/report issue"),
-    BotCommand("refer",         "Refer a friend & get discount"),
+    
+    # (4) Bills
+    BotCommand("subscribe",     "Add monthly bill reminder"),
+    BotCommand("subscriptions", "List all active bills"),
+    
+    # (5) Account
+    BotCommand("upgrade",       "🚀 Upgrade to paid plan"),
     BotCommand("language",      "Change language"),
-    BotCommand("stop",          "Pause bot alerts"),
-    BotCommand("resume",        "Resume bot alerts"),
+    BotCommand("settings",      "⚙️ Edit your profile"),
+    BotCommand("privacy",       "Read Privacy Policy"),
+    BotCommand("refer",         "Refer a friend & get discount"),
+    BotCommand("feedback",      "Send feedback/report issue"),
+    
+    # (6) Controls
+    BotCommand("stop",          "Pause daily bot alerts"),
+    BotCommand("resume",        "Resume daily bot alerts"),
 ]
