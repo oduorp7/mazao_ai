@@ -63,7 +63,11 @@ def _full_name(update: Update) -> str:
 
 
 async def _reply(update: Update, text: str, **kwargs) -> None:
-    await update.message.reply_text(
+    # CF-1: Final safety net redaction of any KRA PIN patterns (A0xxxxxxxB)
+    import re
+    text = re.sub(r'\b[A-P]\d{9}[A-Z]\b', '[REDACTED]', text)
+    
+    await update.effective_message.reply_text(
         text,
         parse_mode=ParseMode.MARKDOWN,
         **kwargs,
