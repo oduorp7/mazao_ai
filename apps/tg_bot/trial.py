@@ -29,12 +29,24 @@ async def start_trial(tenant_id: str):
     ends = now + timedelta(days=14)
 
     def _sync_start():
-        return db.table("tenants").update({
-            "trial_started_at": now.isoformat(),
-            "trial_ends_at": ends.isoformat(),
-            "plan": "free",
-            "subscription_active": False # Trials count as inactive for sub status
-        }).eq("id", tenant_id).execute()
+        try:
+            return db.table("tenants").update({
+                "trial_started_at": now.isoformat(),
+                "trial_ends_at": ends.isoformat(),
+                "plan": "free",
+                "subscription_active": False # Trials count as inactive for sub status
+            }).eq("id", tenant_id).execute()
+        except Exception as e:
+            log.warning("db_update_trial_failed", error=str(e))
+            # Fallback if primary trial columns are missing: update existing 'plan' and 'trial_days_left' if possible
+            try:
+                return db.table("tenants").update({
+                    "plan": "free",
+                    "trial_days_left": 14
+                }).eq("id", tenant_id).execute()
+            except Exception as e2:
+                log.error("fallback_trial_start_failed", error=str(e2))
+                raise e2
 
     await asyncio.get_event_loop().run_in_executor(None, _sync_start)
     log.info("trial_started", tenant_id=tenant_id, ends=ends.isoformat())

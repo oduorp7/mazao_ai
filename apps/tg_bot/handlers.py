@@ -297,10 +297,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
             
             # ── Onboarding Completion (P10-T2) ───────────────────────────
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: db.update_tenant(tid, {"onboarding_completed": True})
-            )
-            tenant["onboarding_completed"] = True
+            try:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: db.update_tenant(tid, {"onboarding_completed": True})
+                )
+                tenant["onboarding_completed"] = True
+            except Exception as e:
+                log.warning("onboarding_completed_update_failed", error=str(e))
             
             # ── Contextual Menu Update (MENU-FIX-T1) ──────────────────────
             from apps.tg_bot.bot import set_contextual_commands
@@ -309,17 +312,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             # ── Founding Member Auto-Tag (P9-T2) ──────────────────────────
             # Set founding_member=true if total tenants <= 50
-            total_tenants = await asyncio.get_event_loop().run_in_executor(
-                None, 
-                lambda: db.get_client().table("tenants").select("id", count="exact").execute()
-            )
-            if total_tenants.count and total_tenants.count <= 50:
-                log.info("founding_member_tagged", telegram_id=tid)
-                await asyncio.get_event_loop().run_in_executor(
+            try:
+                total_tenants = await asyncio.get_event_loop().run_in_executor(
                     None, 
-                    lambda: db.update_tenant(tid, {"founding_member": True})
+                    lambda: db.get_client().table("tenants").select("id", count="exact").execute()
                 )
-                tenant["founding_member"] = True # Update local dict for immediate use
+                if total_tenants.count and total_tenants.count <= 50:
+                    log.info("founding_member_tagged", telegram_id=tid)
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, 
+                        lambda: db.update_tenant(tid, {"founding_member": True})
+                    )
+                    tenant["founding_member"] = True # Update local dict for immediate use
+            except Exception as e:
+                log.warning("founding_member_tag_failed", error=str(e))
             # ─────────────────────────────────────────────────────────────
 
             name = (tenant.get("full_name") or tenant.get("business_name") or "User") if tenant else "User"
@@ -348,7 +354,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             # ── Start Trial (P7-T2) ──────────────────────────────────────────
             if tenant:
-                await start_trial(str(tenant["id"]))
+                try:
+                    await start_trial(str(tenant["id"]))
+                except Exception as e:
+                    log.warning("start_trial_failed", error=str(e))
         except Exception as exc:
             log.exception("handle_callback_critical_failure", error=str(exc))
             await query.answer("⚠️ Mazao AI Logic Error")

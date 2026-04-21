@@ -1,4 +1,4 @@
-# Mazao AI — The Smart Agri-Business Manager
+# Mazao AI — The Smart Kenyan Business Manager
 
 Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax compliance (KRA VAT/PAYE), financial reporting, and utility management for businesses and individuals in Kenya.
 
@@ -8,7 +8,9 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 *   **AI Financial Reporting**: Forward your M-Pesa statements for instant profit/loss analysis and tax estimates.
 *   **Tax Compliance**: Automated reminders for VAT (20th), PAYE (9th), and annual returns.
 *   **Utility Predictions**: Track Electricity (Token) depletion and Fuliza loan due dates.
+*   **Contextual Command Menus**: Dynamic command lists based on user profile (Business vs Individual).
 *   **Multi-language**: Seamless switching between English and Swahili.
+*   **Robust Trial Management**: Automated 14-day trials for all new users.
 
 ## 🛠 Active Commands (15)
 
