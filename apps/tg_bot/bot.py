@@ -101,6 +101,30 @@ def _check_env() -> None:
         sys.exit(1)
 
 
+async def post_init(application: Application) -> None:
+    """Called once after the bot starts — set global command menu and register webhooks."""
+    try:
+        # P13: Register DEFAULT scope for all users (initial view)
+        from apps.tg_bot.menu import CMD_COMMON_START
+        await application.bot.set_my_commands(CMD_COMMON_START, scope=BotCommandScopeDefault())
+        log.info("default_bot_commands_registered", count=len(CMD_COMMON_START))
+
+        # P6-T3: Register Payment Provider Callback
+        app_url = os.getenv("FLY_APP_URL")
+        if app_url:
+            from apps.payments import get_provider
+            provider = get_provider()
+            webhook_url = f"{app_url.rstrip('/')}/payments/webhook"
+            success = await provider.register_callback_url(webhook_url)
+            if success:
+                log.info("payment_callback_registered", url=webhook_url)
+            else:
+                log.warn("payment_callback_registration_failed")
+
+    except Exception as e:
+        log.error("post_init_failed", error=str(e))
+
+
 async def main() -> None:
     _check_env()
 
@@ -306,29 +330,6 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         pass
-
-
-async def post_init(application: Application) -> None:
-    """Called once after the bot starts — set global command menu and register webhooks."""
-    try:
-        # P13: Register DEFAULT scope for all users (initial view)
-        await application.bot.set_my_commands(CMD_COMMON_START, scope=BotCommandScopeDefault())
-        log.info("default_bot_commands_registered", count=len(CMD_COMMON_START))
-
-        # P6-T3: Register Payment Provider Callback
-        app_url = os.getenv("FLY_APP_URL")
-        if app_url:
-            from apps.payments import get_provider
-            provider = get_provider()
-            webhook_url = f"{app_url.rstrip('/')}/payments/webhook"
-            success = await provider.register_callback_url(webhook_url)
-            if success:
-                log.info("payment_callback_registered", url=webhook_url)
-            else:
-                log.warn("payment_callback_registration_failed")
-
-    except Exception as e:
-        log.error("post_init_failed", error=str(e))
 
 
 async def process_live_transaction(bot: Bot, parsed):
