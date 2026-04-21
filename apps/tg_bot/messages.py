@@ -31,11 +31,11 @@ ONBOARDING_SUCCESS_BUSINESS = """
 
 Welcome to the future of Kenyan bookkeeping.
 
-📋 *Trial Status:*
+*Trial Status:*
 Your 14-day free trial starts now.
 *Trial ends:* {trial_ends_at}
 
-🚀 *3 Things to Do Next:*
+*3 Things to Do Next:*
 1. *Analyze:* Upload your M-Pesa statement (/report)
 2. *Monitor:* Set your Till number (/till)
 3. *Comply:* Check your compliance calendar (/status)
@@ -46,16 +46,42 @@ Type /help to see all commands.
 ONBOARDING_SUCCESS_INDIVIDUAL = """
 🎉 *You're all set, {name}!* {founding_badge}
 
-📋 *Trial Status:*
+I'll track your personal KRA deadlines and SHA reminders.
+
+*Trial Status:*
 Your 14-day free trial starts now.
 *Trial ends:* {trial_ends_at}
 
-🚀 *3 Things to Do Next:*
-1. *Track:* Check your obligations (/mystatus)
-2. *Predict:* Set up utility tracking (/tokens)
-3. *Monitor:* Track your Fuliza (/fuliza)
+Type /help anytime to see your commands.
+"""
 
-Type /help to see all commands.
+ONBOARDING_SUCCESS_BUSINESS_SW = """
+🎉 *Umekamilisha usajili, {name}!* {founding_badge}
+
+Karibu kwenye mfumo wa kisasa wa vitabu vya biashara Kenya.
+
+*Hali ya Jaribio (Trial):*
+Jaribio lako la siku 14 linaanza sasa.
+*Mwisho wa jaribio:* {trial_ends_at}
+
+*Mambo 3 ya Kufanya Sasa:*
+1. *Uchambuzi:* Pakia ripoti yako ya M-Pesa (/report)
+2. *Ufuatiliaji:* Weka namba yako ya Till (/till)
+3. *Uzingatiaji:* Angalia kalenda yako ya ushuru (/status)
+
+Andika /help kuona maagizo yote.
+"""
+
+ONBOARDING_SUCCESS_INDIVIDUAL_SW = """
+🎉 *Umekamilisha usajili, {name}!* {founding_badge}
+
+Nitafuatilia tarehe zako za mwisho za KRA na kumbusho za SHA.
+
+*Hali ya Jaribio (Trial):*
+Jaribio lako la siku 14 linaanza sasa.
+*Mwisho wa jaribio:* {trial_ends_at}
+
+Andika /help wakati wowote kuona maagizo yako.
 """
 
 ASK_MPESA_TILL = """\

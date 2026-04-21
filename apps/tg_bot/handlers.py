@@ -345,17 +345,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             badge = M.FOUNDING_BADGE if tenant.get("founding_member") else ""
             
             if tenant.get("user_type") == "individual":
-                final_msg = M.ONBOARDING_SUCCESS_INDIVIDUAL.format(
-                    name=name, 
-                    founding_badge=badge,
-                    trial_ends_at=trial_ends
-                )
+                if lang == "sw":
+                    final_msg = M.ONBOARDING_SUCCESS_INDIVIDUAL_SW.format(
+                        name=name, 
+                        founding_badge=badge,
+                        trial_ends_at=trial_ends
+                    )
+                else:
+                    final_msg = M.ONBOARDING_SUCCESS_INDIVIDUAL.format(
+                        name=name, 
+                        founding_badge=badge,
+                        trial_ends_at=trial_ends
+                    )
             else:
-                final_msg = M.ONBOARDING_SUCCESS_BUSINESS.format(
-                    name=name, 
-                    founding_badge=badge,
-                    trial_ends_at=trial_ends
-                )
+                if lang == "sw":
+                    final_msg = M.ONBOARDING_SUCCESS_BUSINESS_SW.format(
+                        name=name, 
+                        founding_badge=badge,
+                        trial_ends_at=trial_ends
+                    )
+                else:
+                    final_msg = M.ONBOARDING_SUCCESS_BUSINESS.format(
+                        name=name, 
+                        founding_badge=badge,
+                        trial_ends_at=trial_ends
+                    )
             
             await query.edit_message_text(f"{msg}\n\n{final_msg}")
             await query.answer(f"Language set to {lang.upper()}")
