@@ -239,7 +239,12 @@ async def main() -> None:
     from aiohttp import web
     
     async def health_check(request):
-        return web.Response(text="OK", status=200)
+        """P14-T2: Health Check for Fly.io Rollback Protection."""
+        version = os.getenv("GIT_HASH", "unknown")
+        return web.json_response({
+            "status": "ok",
+            "version": version
+        }, status=200)
 
     async def payment_webhook(request):
         """P8-T2: Intasend webhooks are POST only. Challenge is in the body."""
