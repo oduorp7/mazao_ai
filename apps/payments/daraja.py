@@ -1,4 +1,7 @@
 import os
+import base64
+import time
+import httpx
 from .base import PaymentProvider, ParsedTransaction
 from apps.agent.utils.logging import get_logger
 
@@ -18,6 +21,48 @@ class DarajaProvider(PaymentProvider):
             if self.env == "sandbox"
             else "https://api.safaricom.co.ke"
         )
+        
+        # Token Caching (P12-T1)
+        self._access_token = None
+        self._token_expiry = 0
+
+    async def get_access_token(self) -> str:
+        """
+        P12-T1: Implement OAuth2 token acquisition with caching.
+        Returns the access token from Safaricom.
+        """
+        # Return cached token if still valid
+        if self._access_token and time.time() < self._token_expiry:
+            log.info("daraja_token_cache_hit")
+            return self._access_token
+
+        if not self.consumer_key or not self.consumer_secret:
+            log.error("daraja_missing_credentials")
+            raise ValueError("DARAJA_CONSUMER_KEY and DARAJA_CONSUMER_SECRET must be set")
+
+        log.info("daraja_token_fetch_start")
+        
+        # Prepare Basic Auth header
+        auth_str = f"{self.consumer_key}:{self.consumer_secret}"
+        encoded_auth = base64.b64encode(auth_str.encode()).decode()
+        
+        url = f"{self.base_url}/oauth/v1/generate?grant_type=client_credentials"
+        headers = {"Authorization": f"Basic {encoded_auth}"}
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers=headers)
+            
+            if resp.status_code != 200:
+                log.error("daraja_token_fetch_failed", status=resp.status_code, body=resp.text)
+                raise Exception(f"Failed to fetch Daraja token: {resp.status_code}")
+                
+            data = resp.json()
+            self._access_token = data["access_token"]
+            # Set expiry with a 60s buffer
+            self._token_expiry = time.time() + int(data["expires_in"]) - 60
+            
+            log.info("daraja_token_fetch_success", expires_in=data["expires_in"])
+            return self._access_token
 
     async def handle_webhook(self, payload: dict) -> ParsedTransaction:
         """
