@@ -10,6 +10,7 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 *   **Utility Predictions**: Track Electricity (Token) depletion and Fuliza loan due dates.
 *   **Contextual Command Menus**: Dynamic command lists based on user profile (Business vs Individual).
 *   **Multi-Provider AI Engine**: Resilient "brain" supporting Anthropic (Claude) and OpenRouter (DeepSeek-V3) with automatic fallback.
+*   **Real-time M-Pesa (Daraja C2B)**: Native Safaricom integration (Sandbox live, Production pending Paybill approval).
 *   **Multi-language**: Seamless switching between English and Swahili.
 *   **Robust Trial Management**: Automated 14-day trials for all new users.
 
@@ -20,6 +21,25 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 | `/start` | Profile setup (Business or Individual) |
 | `/report` | Generate AI Profit/Loss & Tax report |
 | `/status` | Unified Business Dashboard (Live feed + Tax) |
+
+## 📡 M-Pesa Daraja C2B Integration (Sprint 5)
+
+Mazao AI now supports native Safaricom Daraja C2B integration for real-time transaction monitoring.
+
+### Current State: **Sandbox Live**
+- **OAuth2 Token Manager**: Implemented with caching (3600s).
+- **C2B RegisterURL**: Functional, points to Fly.io validation/confirmation endpoints.
+- **Validation Logic**: Automated "Accepted" response (ResultCode 0) for all sandbox transactions.
+- **Confirmation Logic**: Parsed and routed to the Agent pipeline for reconciliation.
+
+### Production Migration Requirements
+Once the official Safaricom Paybill/Till is approved:
+1.  **Update Secrets**: 
+    - `DARAJA_CONSUMER_KEY` & `DARAJA_CONSUMER_SECRET` (Production versions)
+    - `DARAJA_SHORTCODE` (Your Paybill number)
+    - `DARAJA_ENV` set to `production`
+2.  **Rerun Registration**: The bot will automatically attempt to register the URLs on the next startup.
+
 | `/mystatus` | Personal obligation tracker |
 | `/statement` | View latest statement summary |
 | `/vat` | Detailed VAT liability projection |
