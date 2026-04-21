@@ -213,7 +213,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif data.startswith("set_emp_"):
         val = data.replace("set_emp_", "")
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"has_employees": val == "yes"}))
+        # Robust handling for potential DB schema lag
+        try:
+            # Map yes/no to a status if we want to store it in employment_status, 
+            # or just skip if the column doesn't exist.
+            # In settings, we likely want to know if they have employees for PAYE/NSSF
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"employment_status": "has_employees" if val == "yes" else "sole_proprietor"}))
+        except Exception as e:
+            log.warning("schema_inconsistency", error=str(e), column="employment_status")
+        
         await query.edit_message_text(M.SETTINGS_UPDATED.format(field="Employees", new_value=val.upper()))
 
     elif data.startswith("set_vat_"):
