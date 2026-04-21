@@ -92,13 +92,47 @@ class DarajaProvider(PaymentProvider):
 
     async def register_callback_url(self, callback_url: str) -> bool:
         """
-        P9-T3: Stub for RegisterURL.
-        This will be activated once Safaricom Paybill is approved.
+        P12-T2: Implement C2B RegisterURL logic.
+        Registers the Confirmation and Validation URLs with Safaricom.
         """
-        if not self.consumer_key or not self.consumer_secret:
-            log.info("daraja_registration_skipped", reason="credentials_not_set")
+        if not self.shortcode:
+            log.error("daraja_registration_failed", reason="missing_shortcode")
             return False
+
+        try:
+            token = await self.get_access_token()
             
-        log.info("daraja_registration_pending", url=callback_url)
-        # TODO: Implement OAuth + RegisterURL call
-        return False
+            url = f"{self.base_url}/mpesa/c2b/v1/registerurl"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "ShortCode": self.shortcode,
+                "ResponseType": "Completed",
+                "ConfirmationURL": f"{callback_url}/confirmation",
+                "ValidationURL": f"{callback_url}/validation"
+            }
+
+            log.info("daraja_register_url_start", url=url, shortcode=self.shortcode)
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                
+                if resp.status_code != 200:
+                    log.error("daraja_register_url_failed", status=resp.status_code, body=resp.text)
+                    return False
+                    
+                data = resp.json()
+                # Safaricom returns ResponseCode "0" for success
+                if str(data.get("ResponseCode")) == "0":
+                    log.info("daraja_register_url_success", response=data)
+                    return True
+                else:
+                    log.error("daraja_register_url_rejected", response=data)
+                    return False
+
+        except Exception as e:
+            log.error("daraja_register_url_error", error=str(e))
+            return False

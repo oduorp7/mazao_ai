@@ -285,36 +285,54 @@ async def main() -> None:
         """P8-T2: Intasend webhooks are POST only. Challenge is in the body."""
         try:
             payload = await request.json()
-
-            # ── Webhook Challenge Validation (P6A2 Addendum) ─────────────
+            # Intasend specific challenge
             expected_challenge = os.getenv("INTASEND_WEBHOOK_CHALLENGE", "")
             incoming_challenge = payload.get("challenge", "")
+            if expected_challenge and incoming_challenge == expected_challenge:
+                log.info("intasend_webhook_challenge_validated")
+                return web.Response(text="OK", status=200)
 
-            if expected_challenge and incoming_challenge:
-                if incoming_challenge != expected_challenge:
-                    log.warn("webhook_challenge_mismatch",
-                             expected=expected_challenge[:6] + "...",
-                             received=incoming_challenge[:6] + "...")
-                    return web.Response(text="Unauthorized", status=401)
-                log.info("webhook_challenge_validated")
-            
             from apps.payments import get_provider
             provider = get_provider()
             parsed = await provider.handle_webhook(payload)
-
             if parsed:
-                # Fire-and-forget processing
                 asyncio.create_task(process_live_transaction(app.bot, parsed))
-
             return web.Response(text="OK", status=200)
         except Exception as e:
             log.error("webhook_handler_error", error=str(e))
             return web.Response(text="OK", status=200)
 
+    async def daraja_validation(request):
+        """P12-T3: Daraja C2B Validation Endpoint."""
+        try:
+            payload = await request.json()
+            log.info("daraja_validation_received", payload=payload)
+            # ResultCode 0 means we accept the transaction
+            return web.json_response({"ResultCode": 0, "ResultDesc": "Accepted"})
+        except Exception as e:
+            log.error("daraja_validation_error", error=str(e))
+            return web.json_response({"ResultCode": 1, "ResultDesc": "Internal Error"})
+
+    async def daraja_confirmation(request):
+        """P12-T3: Daraja C2B Confirmation Endpoint."""
+        try:
+            payload = await request.json()
+            log.info("daraja_confirmation_received", payload=payload)
+            from apps.payments.daraja import DarajaProvider
+            provider = DarajaProvider()
+            parsed = await provider.handle_webhook(payload)
+            if parsed:
+                asyncio.create_task(process_live_transaction(app.bot, parsed))
+            return web.Response(text="OK", status=200)
+        except Exception as e:
+            log.error("daraja_confirmation_error", error=str(e))
+            return web.Response(text="OK", status=200)
+
     health_app = web.Application()
     health_app.router.add_get("/health", health_check)
-    health_app.router.add_post("/payments/confirm", payment_webhook)
     health_app.router.add_post("/payments/webhook", payment_webhook)
+    health_app.router.add_post("/payments/confirmation", daraja_confirmation)
+    health_app.router.add_post("/payments/validation", daraja_validation)
     
     runner = web.AppRunner(health_app)
     await runner.setup()
