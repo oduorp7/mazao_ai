@@ -8,19 +8,38 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 *   **AI Financial Reporting**: Forward your M-Pesa statements for instant profit/loss analysis and tax estimates.
 *   **Tax Compliance**: Automated reminders for VAT (20th), PAYE (9th), and annual returns.
 *   **Utility Predictions**: Track Electricity (Token) depletion and Fuliza loan due dates.
-*   **Contextual Command Menus**: Dynamic command lists based on user profile (Business vs Individual).
+*   **Contextual Command Menus (Progressive Disclosure)**: Dynamic command lists based on user profile (Business vs Individual) and subscription tier, ensuring a clean and professional UX.
 *   **Multi-Provider AI Engine**: Resilient "brain" supporting Anthropic (Claude) and OpenRouter (DeepSeek-V3) with automatic fallback.
 *   **Real-time M-Pesa (Daraja C2B)**: Native Safaricom integration (Sandbox live, Production pending Paybill approval).
 *   **Multi-language**: Seamless switching between English and Swahili.
 *   **Robust Trial Management**: Automated 14-day trials for all new users.
 
-## 🛠 Active Commands (15)
+## 🛠 Active Commands (21)
 
-| Command | Description |
-|---------|-------------|
-| `/start` | Profile setup (Business or Individual) |
-| `/report` | Generate AI Profit/Loss & Tax report |
-| `/status` | Unified Business Dashboard (Live feed + Tax) |
+| Command | Description | Relevant To | Tier |
+|---------|-------------|-------------|------|
+| `/start` | Profile setup & Onboarding | New User | Any |
+| `/help` | Show available commands | Any | Any |
+| `/report` | AI Profit/Loss & Tax report | Business | Any |
+| `/status` | Business Dashboard | Business | Any |
+| `/mystatus` | Your KRA & SHA status | Individual | Any |
+| `/till` | Register M-Pesa Till | Business | Any |
+| `/vat` | VAT liability check | Business | Any |
+| `/kra` | KRA obligation check | Business | Any |
+| `/statement` | View parsed statement | Business | Any |
+| `/tokens` | Log electricity units | Individual | Any |
+| `/fuliza` | Log Fuliza balance | Individual | Any |
+| `/subscribe` | Add bill reminder | Individual | Any |
+| `/subscriptions` | Manage recurring payments | Individual | Any |
+| `/upgrade` | Upgrade to paid plan | Any | Free |
+| `/refer` | Refer a friend & get discount | Any | Any |
+| `/settings` | Edit your profile | Any | Any |
+| `/language` | Change language (EN/SW) | Any | Any |
+| `/privacy` | Read Privacy Policy | Any | Any |
+| `/feedback` | Send feedback/report issue | Any | Any |
+| `/stop` | Pause daily alerts | Any | Any |
+| `/resume` | Resume daily alerts | Any | Any |
+| `/admin` | Admin Dashboard | Admin | N/A |
 
 ## 📡 M-Pesa Daraja C2B Integration (Sprint 5)
 
@@ -30,7 +49,7 @@ Mazao AI now supports native Safaricom Daraja C2B integration for real-time tran
 - **OAuth2 Token Manager**: Implemented with caching (3600s).
 - **C2B RegisterURL**: Functional, points to Fly.io validation/confirmation endpoints.
 - **Validation Logic**: Automated "Accepted" response (ResultCode 0) for all sandbox transactions.
-- **Confirmation Logic**: Parsed and routed to the Agent pipeline for reconciliation.
+- **Confirmation Logic**: Parsed and logged to `live_transactions` table for reconciliation.
 
 ### Production Migration Requirements
 Once the official Safaricom Paybill/Till is approved:
@@ -39,19 +58,6 @@ Once the official Safaricom Paybill/Till is approved:
     - `DARAJA_SHORTCODE` (Your Paybill number)
     - `DARAJA_ENV` set to `production`
 2.  **Rerun Registration**: The bot will automatically attempt to register the URLs on the next startup.
-
-| `/mystatus` | Personal obligation tracker |
-| `/statement` | View latest statement summary |
-| `/vat` | Detailed VAT liability projection |
-| `/kra` | Full tax obligation calendar |
-| `/till` | Register M-Pesa Till for live alerts |
-| `/tokens` | Log electricity units (Predict depletion) |
-| `/fuliza` | Log Fuliza loan & due date |
-| `/subscribe` | Add monthly business bills |
-| `/subscriptions` | Manage recurring payments |
-| `/language` | Switch English/Swahili |
-| `/stop` | Pause daily alerts |
-| `/resume` | Resume daily alerts |
 
 ## 📦 Production Setup (Fly.io)
 
@@ -71,6 +77,8 @@ Once the official Safaricom Paybill/Till is approved:
 - [x] **Feedback Loop**: Deliverable via `/feedback` command; auto-forwards to Chief Engineer.
 - [x] **Organic Growth**: Referral program active via `/refer` (20% discount reward).
 - [x] **Admin Visibility**: Daily digest at 8:00 AM EAT and invisible `/admin` dashboard.
+- [x] **Command Menu**: Progressive disclosure implemented via `apps/tg_bot/menu.py`.
+- [x] **Daraja Bridge**: Native C2B integration (Sandbox Verified).
 - [ ] **ODPC Registration**: [ACTION REQUIRED] Data Controller registration pending.
 - [ ] **Safaricom Paybill**: [ACTION REQUIRED] Application for production paybill pending.
 - [ ] **Privacy Policy URL**: [ACTION REQUIRED] Hosted URL pending (currently bot-only).
