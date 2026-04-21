@@ -434,10 +434,12 @@ async def process_live_transaction(bot: Bot, parsed):
                 "bill_ref": parsed.bill_ref,
                 "provider": parsed.provider
             }).execute()
+            log.info("c2b_confirmation_db_write_success", trans_id=parsed.trans_id)
         except Exception as e:
             if "duplicate key" in str(e).lower():
                 log.info("duplicate_txn_ignored", trans_id=parsed.trans_id)
                 return
+            log.error("c2b_confirmation_db_write_failed", trans_id=parsed.trans_id, error=str(e))
             raise
 
         # 4. Notify Tenant
