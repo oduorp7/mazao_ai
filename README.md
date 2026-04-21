@@ -9,6 +9,7 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 *   **Tax Compliance**: Automated reminders for VAT (20th), PAYE (9th), and annual returns.
 *   **Utility Predictions**: Track Electricity (Token) depletion and Fuliza loan due dates.
 *   **Contextual Command Menus**: Dynamic command lists based on user profile (Business vs Individual).
+*   **Multi-Provider AI Engine**: Resilient "brain" supporting Anthropic (Claude) and OpenRouter (DeepSeek-V3) with automatic fallback.
 *   **Multi-language**: Seamless switching between English and Swahili.
 *   **Robust Trial Management**: Automated 14-day trials for all new users.
 
