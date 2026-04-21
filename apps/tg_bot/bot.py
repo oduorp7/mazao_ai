@@ -303,7 +303,7 @@ async def main() -> None:
             return web.Response(text="OK", status=200)
 
     async def daraja_validation(request):
-        """P12-T3: Daraja C2B Validation Endpoint."""
+        """P12-T3A: Daraja C2B Validation Endpoint."""
         try:
             payload = await request.json()
             log.info("daraja_validation_received", payload=payload)
@@ -314,25 +314,31 @@ async def main() -> None:
             return web.json_response({"ResultCode": 1, "ResultDesc": "Internal Error"})
 
     async def daraja_confirmation(request):
-        """P12-T3: Daraja C2B Confirmation Endpoint."""
+        """P12-T3B: Daraja C2B Confirmation Endpoint."""
         try:
             payload = await request.json()
             log.info("daraja_confirmation_received", payload=payload)
+            
             from apps.payments.daraja import DarajaProvider
             provider = DarajaProvider()
             parsed = await provider.handle_webhook(payload)
+            
             if parsed:
+                # This task handles the DB write to live_transactions and tenant notification
                 asyncio.create_task(process_live_transaction(app.bot, parsed))
-            return web.Response(text="OK", status=200)
+                log.info("daraja_confirmation_processed", trans_id=parsed.trans_id)
+            
+            return web.json_response({"ResultCode": 0, "ResultDesc": "Accepted"})
         except Exception as e:
             log.error("daraja_confirmation_error", error=str(e))
-            return web.Response(text="OK", status=200)
+            # Even on error, we return 0 to Safaricom to prevent retries if we logged the failure
+            return web.json_response({"ResultCode": 0, "ResultDesc": "Accepted"})
 
     health_app = web.Application()
     health_app.router.add_get("/health", health_check)
     health_app.router.add_post("/payments/webhook", payment_webhook)
-    health_app.router.add_post("/payments/confirmation", daraja_confirmation)
-    health_app.router.add_post("/payments/validation", daraja_validation)
+    health_app.router.add_post("/mpesa/c2b/validation", daraja_validation)
+    health_app.router.add_post("/mpesa/c2b/confirmation", daraja_confirmation)
     
     runner = web.AppRunner(health_app)
     await runner.setup()
