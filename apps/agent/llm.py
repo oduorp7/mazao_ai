@@ -12,15 +12,27 @@ def get_llm(model_type: str = "default") -> BaseChatModel:
     """
     Returns an LLM instance with fallback capability.
     Priority:
-    1. Anthropic (if key available and not rate-limited)
-    2. OpenRouter (DeepSeek-V3 or similar)
+    1. Local (LM Studio/Ollama) - if LLM_PRIORITY is 'local'
+    2. Anthropic (if key available and not rate-limited)
+    3. OpenRouter (DeepSeek-V3 or similar)
     """
     
-    # 1. Try Anthropic if configured and priority is set
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-    use_anthropic = os.getenv("LLM_PRIORITY", "openrouter").lower() == "anthropic"
+    priority = os.getenv("LLM_PRIORITY", "openrouter").lower()
     
-    if use_anthropic and anthropic_key:
+    # 1. Local Development Mode (LM Studio / Ollama)
+    if priority == "local":
+        local_base = os.getenv("LOCAL_LLM_BASE", "http://localhost:1234/v1")
+        log.info("initializing_llm", provider="local", base_url=local_base)
+        return ChatOpenAI(
+            model=os.getenv("LOCAL_LLM_MODEL", "local-model"),
+            openai_api_key="not-needed",
+            openai_api_base=local_base,
+            temperature=0
+        )
+
+    # 2. Try Anthropic if priority is set
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if priority == "anthropic" and anthropic_key:
         try:
             log.info("initializing_llm", provider="anthropic")
             return ChatAnthropic(
@@ -31,7 +43,7 @@ def get_llm(model_type: str = "default") -> BaseChatModel:
         except Exception as e:
             log.warning("anthropic_init_failed_falling_back", error=str(e))
 
-    # 2. Fallback to OpenRouter (DeepSeek-V3 is excellent for financial logic)
+    # 3. OpenRouter (Primary for production if priority is 'openrouter')
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
     if openrouter_key:
         log.info("initializing_llm", provider="openrouter", model="deepseek-v3")
@@ -46,8 +58,8 @@ def get_llm(model_type: str = "default") -> BaseChatModel:
             }
         )
     
-    # 3. Last resort: Anthropic (if not already tried)
-    if not use_anthropic and anthropic_key:
+    # 4. Final Fallback to Anthropic (if available)
+    if anthropic_key:
         log.info("initializing_llm", provider="anthropic", mode="last_resort")
         return ChatAnthropic(
             model="claude-3-5-sonnet-20240620",
