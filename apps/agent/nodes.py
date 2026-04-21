@@ -27,12 +27,15 @@ from __future__ import annotations
 import os
 import time
 import uuid
+import json
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Any
 
 import httpx
 from anthropic import Anthropic
+from langchain_core.messages import SystemMessage, HumanMessage
+from apps.agent.llm import get_llm
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -215,60 +218,36 @@ Return ONLY the JSON array. No markdown, no explanation."""
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type((httpx.TimeoutException, Exception)),
+    retry=retry_if_exception_type(Exception),
     reraise=False,
 )
-def _call_claude_categorize(transactions: list[dict], client: Anthropic) -> list[dict]:
-    """Isolated Claude call with tenacity retry — keeps the node clean."""
-    import json
-
+def _call_llm_categorize(transactions: list[dict]) -> list[dict]:
+    """Uses the unified LLM factory for categorization."""
+    llm = get_llm()
     tx_text = json.dumps(transactions, indent=2, default=str)
-
+    
+    messages = [
+        SystemMessage(content=CATEGORIZATION_SYSTEM_PROMPT),
+        HumanMessage(content=f"Categorise these transactions:\n\n{tx_text}")
+    ]
+    
     try:
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
-            max_tokens=4096,
-            system=CATEGORIZATION_SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Categorise these transactions:\n\n{tx_text}",
-                }
-            ],
-        )
-        raw = response.content[0].text.strip()
+        response = llm.invoke(messages)
+        raw = response.content.strip()
+        # Handle cases where model might wrap in ```json ... ```
+        if "```json" in raw:
+            raw = raw.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw:
+            raw = raw.split("```")[1].split("```")[0].strip()
         return json.loads(raw)
     except Exception as e:
-        if "credit balance is too low" in str(e).lower() or "400" in str(e):
-            log.warning("billing_blocker_detected", error=str(e))
-            raise  # Let the node handle the fallback
+        log.error("llm_categorization_error", error=str(e))
         raise
-
-
-def _rule_based_categorize(tx: Any) -> dict:
-    """
-    Deterministic fallback if Claude is unavailable.
-    Simple but correct — better than returning nothing.
-    """
-    name_upper = (tx.name or "").upper()
-    ref_upper = (tx.bill_ref or "").upper()
-
-    if any(k in name_upper or k in ref_upper for k in ["KRA", "ITAX", "NSSF", "NHIF"]):
-        return {"category": "TAX", "confidence": 0.9, "needs_review": False}
-
-    if tx.transaction_type == TransactionType.C2B:
-        return {"category": "SALES", "confidence": 0.7, "needs_review": tx.amount > 50000}
-
-    if tx.transaction_type == TransactionType.B2C:
-        return {"category": "TRANSFER", "confidence": 0.6, "needs_review": tx.amount > 50000}
-
-    return {"category": "UNKNOWN", "confidence": 0.3, "needs_review": True}
-
 
 def categorize_transactions(state: AgentState) -> dict:
     """
-    Calls Claude to categorise every raw transaction.
-    Falls back to rule-based if Claude fails all retries.
+    Calls unified LLM to categorise every raw transaction.
+    Falls back to rule-based if LLM fails all retries.
     """
     node_name = "categorize_transactions"
     start = time.perf_counter()
@@ -282,8 +261,6 @@ def categorize_transactions(state: AgentState) -> dict:
     )
 
     try:
-        client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-
         tx_dicts = [
             {
                 "mpesa_ref": t.mpesa_ref,
@@ -297,28 +274,28 @@ def categorize_transactions(state: AgentState) -> dict:
             for t in state.raw_transactions
         ]
 
-        claude_results: list[dict] = []
+        llm_results: list[dict] = []
         used_fallback = False
 
         try:
-            claude_results = _call_claude_categorize(tx_dicts, client)
+            llm_results = _call_llm_categorize(tx_dicts)
             log.info(
-                "claude_categorization_complete",
+                "llm_categorization_complete",
                 node=node_name,
                 tenant_id=state.tenant_id,
-                result_count=len(claude_results),
+                result_count=len(llm_results),
             )
         except Exception as exc:
             used_fallback = True
             retry_count = 3
             log.warning(
-                "claude_categorization_failed_using_fallback",
+                "llm_categorization_failed_using_fallback",
                 node=node_name,
                 tenant_id=state.tenant_id,
                 error=str(exc),
             )
             # Build a lookup by mpesa_ref for fallback
-            claude_results = [
+            llm_results = [
                 {"mpesa_ref": t["mpesa_ref"], **_rule_based_categorize(
                     state.raw_transactions[i]
                 )}
@@ -326,7 +303,7 @@ def categorize_transactions(state: AgentState) -> dict:
             ]
 
         # Build lookup keyed by mpesa_ref
-        result_map = {r["mpesa_ref"]: r for r in claude_results}
+        result_map = {r["mpesa_ref"]: r for r in llm_results}
 
         categorized: list[CategorizedTransaction] = []
         for tx in state.raw_transactions:
@@ -588,20 +565,19 @@ Write in {language}."""
     retry=retry_if_exception_type(Exception),
     reraise=False,
 )
-def _call_claude_report(prompt: str, language: str, client: Anthropic) -> str:
+def _call_llm_report(prompt: str, language: str) -> str:
+    """Uses the unified LLM factory for report generation."""
+    llm = get_llm()
+    messages = [
+        SystemMessage(content=REPORT_SYSTEM_PROMPT.format(language=language)),
+        HumanMessage(content=prompt)
+    ]
     try:
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
-            max_tokens=1024,
-            system=REPORT_SYSTEM_PROMPT.format(language=language),
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text.strip()
+        response = llm.invoke(messages)
+        return response.content.strip()
     except Exception as e:
-        if "credit balance is too low" in str(e).lower():
-            log.warning("billing_blocker_report_fallback", language=language)
+        log.error("llm_report_error", error=str(e), language=language)
         raise
-
 
 def _build_report_prompt(state: AgentState) -> str:
     r = state.reconciliation
@@ -634,8 +610,8 @@ Write the WhatsApp report now.
 
 def generate_report(state: AgentState) -> dict:
     """
-    Calls Claude to write bilingual (English + Swahili) WhatsApp reports.
-    Falls back to a template-based report if Claude fails.
+    Calls LLM (Claude or DeepSeek) to write bilingual (English + Swahili) WhatsApp reports.
+    Falls back to a template-based report if LLM fails.
     """
     node_name = "generate_report"
     start = time.perf_counter()
@@ -643,18 +619,17 @@ def generate_report(state: AgentState) -> dict:
     log.info("node_start", node=node_name, tenant_id=state.tenant_id)
 
     try:
-        client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         prompt = _build_report_prompt(state)
 
         report_en: str = ""
         report_sw: str = ""
 
         try:
-            report_en = _call_claude_report(prompt, "English", client)
-            report_sw = _call_claude_report(prompt, "Swahili", client)
+            report_en = _call_llm_report(prompt, "English")
+            report_sw = _call_llm_report(prompt, "Swahili")
         except Exception as exc:
             log.warning(
-                "claude_report_failed_using_template",
+                "llm_report_failed_using_template",
                 node=node_name,
                 tenant_id=state.tenant_id,
                 error=str(exc),
