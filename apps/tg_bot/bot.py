@@ -428,10 +428,10 @@ async def process_live_transaction(bot: Bot, parsed):
                 "tenant_id": tenant_id,
                 "trans_id": parsed.trans_id,
                 "trans_time": parsed.timestamp.isoformat(),
-                "amount": parsed.amount,
+                "trans_amount": parsed.amount,
                 "msisdn": parsed.msisdn,
                 "first_name": parsed.first_name,
-                "bill_ref": parsed.bill_ref,
+                "bill_ref_number": parsed.bill_ref,
                 "provider": parsed.provider
             }).execute()
             log.info("c2b_confirmation_db_write_success", trans_id=parsed.trans_id)
