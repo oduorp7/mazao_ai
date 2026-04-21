@@ -35,6 +35,7 @@ from telegram.constants import ParseMode
 
 import apps.tg_bot.db as db
 import apps.tg_bot.messages as M
+from apps.tg_bot.menu import update_user_menu
 from apps.tg_bot.trial import is_feature_allowed, start_trial, get_trial_status
 from apps.payments.stk import initiate_stk_push
 from apps.agent.utils.logging import get_logger
@@ -101,6 +102,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
     if tenant and tenant["status"] in ("active", "trial"):
+        # P13: Refresh menu for existing users
+        await update_user_menu(context.bot, tid, tenant)
         # Already registered — show help instead
         await _reply(update, M.HELP)
         return
@@ -313,9 +316,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             except Exception as e:
                 log.warning("onboarding_completed_update_failed", error=str(e))
             
-            # ── Contextual Menu Update (MENU-FIX-T1) ──────────────────────
-            from apps.tg_bot.bot import set_contextual_commands
-            await set_contextual_commands(context.bot, tid, tenant.get("user_type", "business"))
+            # ── Progressive Command Menu Update (P13) ──────────────────────
+            await update_user_menu(context.bot, tid, tenant)
             # ─────────────────────────────────────────────────────────────
 
             # ── Founding Member Auto-Tag (P9-T2) ──────────────────────────
@@ -1327,6 +1329,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"business_name": text}))
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        
+        # P13: Refresh menu after settings change
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await update_user_menu(context.bot, tid, tenant)
+        
         await _reply(update, M.SETTINGS_UPDATED.format(field="Business Name", new_value=text))
         return
 
@@ -1337,6 +1344,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"phone_number": clean_phone}))
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        
+        # P13: Refresh menu after settings change
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await update_user_menu(context.bot, tid, tenant)
+        
         await _reply(update, M.SETTINGS_UPDATED.format(field="Phone Number", new_value=clean_phone))
         return
 
@@ -1347,6 +1359,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"mpesa_till": clean_till}))
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        
+        # P13: Refresh menu after settings change
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await update_user_menu(context.bot, tid, tenant)
+        
         await _reply(update, M.SETTINGS_UPDATED.format(field="Till Number", new_value=clean_till))
         return
 

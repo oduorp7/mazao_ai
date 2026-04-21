@@ -41,6 +41,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest # P10-T5
 from telegram.constants import ParseMode
 
+from apps.tg_bot.menu import update_user_menu
 from apps.tg_bot.handlers import (
     cmd_start,
     cmd_help,
@@ -84,72 +85,7 @@ load_dotenv()
 setup_logging()
 log = get_logger(__name__)
 
-# ── Contextual Command Sets (MENU-FIX-T1) ──────────────────────────────
-
-CMD_DEFAULT = [
-    BotCommand("start",    "Start Mazao AI & Onboarding"),
-    BotCommand("help",     "Show all commands"),
-    BotCommand("privacy",  "Read Privacy Policy"),
-    BotCommand("language", "Change language / Badilisha lugha"),
-    BotCommand("feedback", "Send feedback/report issue"),
-]
-
-CMD_BUSINESS = [
-    BotCommand("report",   "Generate today's business report"),
-    BotCommand("status",   "Business Dashboard"),
-    BotCommand("till",     "Register M-Pesa Till"),
-    BotCommand("upgrade",  " Upgrade to paid plan"),
-    BotCommand("refer",    "Refer a friend & get discount"),
-    BotCommand("settings", " Edit your profile"),
-    BotCommand("help",     "Show all commands"),
-    BotCommand("stop",     "Pause daily bot alerts"),
-    BotCommand("resume",   "Resume daily bot alerts"),
-]
-
-CMD_INDIVIDUAL = [
-    BotCommand("mystatus",      "Personal status (KRA/SHA)"),
-    BotCommand("tokens",        "Log electricity units"),
-    BotCommand("fuliza",        "Log Fuliza loan balance"),
-    BotCommand("subscribe",     "Add monthly bill reminder"),
-    BotCommand("upgrade",       " Upgrade to paid plan"),
-    BotCommand("refer",         "Refer a friend & get discount"),
-    BotCommand("settings",      " Edit your profile"),
-    BotCommand("help",          "Show all commands"),
-    BotCommand("stop",          "Pause daily bot alerts"),
-    BotCommand("resume",        "Resume daily bot alerts"),
-]
-
-
-async def set_contextual_commands(bot: Bot, chat_id: int, user_type: str) -> None:
-    """Helper to update command menu based on user scope (MENU-FIX-T1)."""
-    scope = BotCommandScopeChat(chat_id=chat_id)
-    cmds = CMD_BUSINESS if user_type == "business" else CMD_INDIVIDUAL
-    await bot.set_my_commands(cmds, scope=scope)
-    log.info("contextual_commands_updated", chat_id=chat_id, user_type=user_type)
-
-
-async def post_init(application: Application) -> None:
-    """Called once after the bot starts — set command menu and register webhooks."""
-    try:
-        # Register DEFAULT scope for all users (progressive disclosure)
-        await application.bot.set_my_commands(CMD_DEFAULT, scope=BotCommandScopeDefault())
-        log.info("default_bot_commands_registered", count=len(CMD_DEFAULT))
-
-        # P6-T3: Register Payment Provider Callback
-        app_url = os.getenv("FLY_APP_URL")
-        if app_url:
-            from apps.payments import get_provider
-            provider = get_provider()
-            webhook_url = f"{app_url.rstrip('/')}/payments/webhook"
-            success = await provider.register_callback_url(webhook_url)
-            if success:
-                log.info("payment_callback_registered", url=webhook_url)
-            else:
-                log.warn("payment_callback_registration_failed")
-
-    except Exception as e:
-        log.error("post_init_failed", error=str(e))
-
+# ── Environment & Application Setup ────────────────────────────────────────────
 
 def _check_env() -> None:
     """Verify all required environment variables are set."""
@@ -372,56 +308,12 @@ if __name__ == "__main__":
         pass
 
 
-    # ── Contextual Command Sets (MENU-FIX-T1) ──────────────────────────────
-
-CMD_DEFAULT = [
-    BotCommand("start",    "Start Mazao AI & Onboarding"),
-    BotCommand("help",     "Show all commands"),
-    BotCommand("privacy",  "Read Privacy Policy"),
-    BotCommand("language", "Change language / Badilisha lugha"),
-    BotCommand("feedback", "Send feedback/report issue"),
-]
-
-CMD_BUSINESS = [
-    BotCommand("report",   "Generate today's business report"),
-    BotCommand("status",   "Business Dashboard"),
-    BotCommand("till",     "Register M-Pesa Till"),
-    BotCommand("upgrade",  " Upgrade to paid plan"),
-    BotCommand("refer",    "Refer a friend & get discount"),
-    BotCommand("settings", " Edit your profile"),
-    BotCommand("help",     "Show all commands"),
-    BotCommand("stop",     "Pause daily bot alerts"),
-    BotCommand("resume",   "Resume daily bot alerts"),
-]
-
-CMD_INDIVIDUAL = [
-    BotCommand("mystatus",      "Personal status (KRA/SHA)"),
-    BotCommand("tokens",        "Log electricity units"),
-    BotCommand("fuliza",        "Log Fuliza loan balance"),
-    BotCommand("subscribe",     "Add monthly bill reminder"),
-    BotCommand("upgrade",       " Upgrade to paid plan"),
-    BotCommand("refer",         "Refer a friend & get discount"),
-    BotCommand("settings",      " Edit your profile"),
-    BotCommand("help",          "Show all commands"),
-    BotCommand("stop",          "Pause daily bot alerts"),
-    BotCommand("resume",        "Resume daily bot alerts"),
-]
-
-
-async def set_contextual_commands(bot: Bot, chat_id: int, user_type: str) -> None:
-    """Helper to update command menu based on user scope (MENU-FIX-T1)."""
-    scope = BotCommandScopeChat(chat_id=chat_id)
-    cmds = CMD_BUSINESS if user_type == "business" else CMD_INDIVIDUAL
-    await bot.set_my_commands(cmds, scope=scope)
-    log.info("contextual_commands_updated", chat_id=chat_id, user_type=user_type)
-
-
 async def post_init(application: Application) -> None:
-    """Called once after the bot starts — set command menu and register webhooks."""
+    """Called once after the bot starts — set global command menu and register webhooks."""
     try:
-        # Register DEFAULT scope for all users (progressive disclosure)
-        await application.bot.set_my_commands(CMD_DEFAULT, scope=BotCommandScopeDefault())
-        log.info("default_bot_commands_registered", count=len(CMD_DEFAULT))
+        # P13: Register DEFAULT scope for all users (initial view)
+        await application.bot.set_my_commands(CMD_COMMON_START, scope=BotCommandScopeDefault())
+        log.info("default_bot_commands_registered", count=len(CMD_COMMON_START))
 
         # P6-T3: Register Payment Provider Callback
         app_url = os.getenv("FLY_APP_URL")
