@@ -11,13 +11,39 @@ log = get_logger(__name__)
 def get_llm(model_type: str = "default") -> BaseChatModel:
     """
     Returns an LLM instance with fallback capability.
-    Priority:
+
+    model_type tiers:
+    - "tips"      -> Free Mistral 7B Instruct (cheap engagement nudges)
+    - "financial" -> DeepSeek V3 (explicit: M-Pesa parsing, categorization)
+    - "default"   -> DeepSeek V3 (general agent reasoning)
+    - "premium"   -> Claude 3.5 Sonnet (reserved for future paid tier)
+
+    Priority fallback chain:
     1. Local (LM Studio/Ollama) - if LLM_PRIORITY is 'local'
-    2. Anthropic (if key available and not rate-limited)
-    3. OpenRouter (DeepSeek-V3 or similar)
+    2. Anthropic (if LLM_PRIORITY is 'anthropic' and key available)
+    3. OpenRouter (model depends on model_type)
+    4. Anthropic (last resort)
     """
-    
+
     priority = os.getenv("LLM_PRIORITY", "openrouter").lower()
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+
+    # --- Tips tier: free model, short response, slight creativity ---
+    # Routed FIRST so it never falls back to paid providers unexpectedly.
+    if model_type == "tips" and openrouter_key:
+        tips_model = os.getenv("LLM_TIPS_MODEL", "deepseek/deepseek-chat")
+        log.info("initializing_llm", provider="openrouter", model=tips_model, tier="tips")
+        return ChatOpenAI(
+            model=tips_model,
+            openai_api_key=openrouter_key,
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0.4,
+            max_tokens=120,
+            default_headers={
+                "HTTP-Referer": "https://mazao-ai.fly.dev",
+                "X-Title": "Mazao AI - Tips"
+            }
+        )
     
     # 1. Local Development Mode (LM Studio / Ollama)
     if priority == "local":

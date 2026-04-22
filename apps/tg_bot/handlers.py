@@ -1700,7 +1700,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 )
 
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-            
+
+            # P16-T1: AI engagement tip (safe, optional, free-tier LLM)
+            # Never blocks: returns None on any failure.
+            tip_text = ""
+            try:
+                from apps.agent import tips as tips_engine
+                anomaly_flag = bool(anomaly_warning)
+                if tips_engine.should_show_tip(n, anomaly_flag):
+                    tip = await tips_engine.generate_tip({
+                        "units": units,
+                        "household_type": h_type,
+                        "daily_rate": daily_rate,
+                        "days_remaining": days_remaining,
+                        "entry_count": n,
+                        "amount_paid": amount_paid,
+                        "personal_rate": pers_rate,
+                        "population_rate": pop_rate,
+                        "anomaly": anomaly_flag,
+                    })
+                    if tip:
+                        tip_text = f"\n\n💡 _{tip}_"
+            except Exception as _tip_exc:
+                log.warning("tip_pipeline_skipped", error=str(_tip_exc))
+
             response = (
                 f"⚡ *Token Recorded!*\n\n"
                 f"Units: {units}\n"
@@ -1711,6 +1734,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 f"{range_text}"
                 f"{anomaly_warning}"
                 f"{breakdown_text}"
+                f"{tip_text}"
                 f"{encouragement}"
             )
             
