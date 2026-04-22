@@ -155,11 +155,14 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             InlineKeyboardButton("🌍 Language", callback_data="set_lang"),
         ],
         [
-            InlineKeyboardButton("📱 Phone Number", callback_data="set_phone"),
-            InlineKeyboardButton("📡 Till Number", callback_data="set_till"),
+            InlineKeyboardButton("🏠 Home Type", callback_data="set_htype"),
+            InlineKeyboardButton("� Phone Number", callback_data="set_phone"),
         ],
         [
-            InlineKeyboardButton("👥 Employees", callback_data="set_emp"),
+            InlineKeyboardButton("� Till Number", callback_data="set_till"),
+            InlineKeyboardButton("�� Employees", callback_data="set_emp"),
+        ],
+        [
             InlineKeyboardButton("💰 VAT Status", callback_data="set_vat"),
         ]
     ]
@@ -176,7 +179,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     log.info("callback_received", telegram_id=tid, data=data)
 
-    if data == "set_name":
+    if data == "set_htype":
+        keyboard = [
+            [InlineKeyboardButton("1. Basic (No fridge)", callback_data="htype_basic")],
+            [InlineKeyboardButton("2. Standard (Fridge + TV)", callback_data="htype_standard")],
+            [InlineKeyboardButton("3. Comfort (Fridge + TV + Heater)", callback_data="htype_comfort")],
+            [InlineKeyboardButton("4. Business Premises", callback_data="htype_business")]
+        ]
+        await query.edit_message_text("🏠 *Select your Home Type:*\n\nThis updates your electricity prediction baselines.", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "set_name":
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_settings_name"))
         await query.edit_message_text(M.SETTINGS_EDIT_NAME_PROMPT)
     
@@ -1474,7 +1486,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
             units = float(parts[0].replace(",", ""))
             d_str = parts[1]
-            p_date = datetime.strptime(d_str, "%d/%m/%Y").date()
+            
+            # P15-HF1: Robust date parsing for DD/MM/YYYY or DD/M/YYYY
+            try:
+                p_date = datetime.strptime(d_str, "%d/%m/%Y").date()
+            except ValueError:
+                try:
+                    # Try single digit month/day if primary fails
+                    p_date = datetime.strptime(d_str, "%d/%m/%y").date() # Handle 2-digit year just in case
+                except ValueError:
+                    # Final fallback to dateutil or manual split for extreme flexibility
+                    day, month, year = d_str.split("/")
+                    if len(year) == 2: year = f"20{year}"
+                    p_date = datetime(int(year), int(month), int(day)).date()
             
             # P15-T1D: Optional amount paid
             amount_paid = None
