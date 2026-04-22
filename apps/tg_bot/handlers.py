@@ -1,4 +1,4 @@
-﻿"""
+"""
 handlers.py — All Telegram command and message handlers.
 
 Each handler is a standalone async function registered in bot.py.
@@ -1519,13 +1519,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     conv = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_conv_state(tid))
     state = conv["state"] if conv else "idle"
 
+    # P16-FINAL: Auto-Detect KPLC SMS (Zero Friction + Typo Resistant)
+    import re as _re
+    if text and (_re.search(r'(mtr|mur|mrt|token|tknamt):', text.lower())):
+        log.info("auto_detect_token_sms", user_id=update.message.from_user.id)
+        return await awaiting_tokens(update, context)
+
     # P10-T1: Command interruption check
     if text.startswith("/"):
-        # If user sends a command while in a state, clear the state and handle command
         if state != "idle":
             log.info("state_cleared_by_command", telegram_id=tid, state=state, command=text)
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-        # Command handlers are registered separately, but this ensures state doesn't block them
         return
 
     if state == "awaiting_settings_name":
@@ -1798,8 +1802,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
             if daily_rate <= 0:
                 daily_rate = pop_rate
-            
-            days_remaining = int(units / daily_rate)
+
+            # ── Carry-over Balance Logic (P16-FIX-FINAL) ──────────────────
+            # Instead of assuming the user is at 0, we estimate remaining units.
+            total_units_for_projection = units
+            if len(readings) >= 2:
+                prev = readings[1]
+                p_date_raw = prev["purchase_date"]
+                p_date = datetime.fromisoformat(p_date_raw.replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                
+                # How many days since the last purchase?
+                # Safety: if token date is in future (test data), treat as 0.01 days
+                elapsed_seconds = (now - p_date).total_seconds()
+                elapsed_days = max(0.01, elapsed_seconds / 86400)
+                
+                # Estimate remaining units: (Prev Units - Consumed)
+                prev_units = float(prev["units"])
+                consumed = elapsed_days * daily_rate
+                remaining = max(0, prev_units - consumed)
+                
+                total_units_for_projection += remaining
+                log.info("carry_over_applied", new=units, remaining=round(remaining, 2), total=round(total_units_for_projection, 2))
+
+            # P16-FIX-FINAL: Enterprise Rounding
+            import math as _math
+            days_remaining = int(_math.ceil(total_units_for_projection / daily_rate))
+            if total_units_for_projection > 0 and days_remaining == 0:
+                days_remaining = 1
             depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
             
             # Confidence Info

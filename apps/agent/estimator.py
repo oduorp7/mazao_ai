@@ -62,24 +62,50 @@ def calculate_weighted_personal_rate(readings: List[Dict]) -> Tuple[Optional[flo
 
         days = (d1 - d2).days
         if days > 0:
-            # Rate = units of r2 consumed between d2 and d1
             rate = float(r2["units"]) / days
             rates.append(rate)
 
     n_valid_intervals = len(rates)
-
     if not rates:
         return (None, 0)
 
-    # Exponential decay weights — most recent interval carries 40% weight
+    # P16-FIX-FINAL: Anomaly-Aware Weighting
+    # If an interval is an anomaly, we reduce its weight so it doesn't skew the projection.
     weights = [0.40, 0.25, 0.15, 0.10, 0.07, 0.03]
     actual_weights = weights[:n_valid_intervals]
-    # Re-normalize weights if fewer than 6 valid intervals
+    
+    # Calculate median to detect outliers
+    sorted_rates = sorted(rates)
+    median_rate = sorted_rates[len(sorted_rates)//2]
+    
+    # Apply weight penalties to anomalies
+    for i, rate in enumerate(rates):
+        # RULE 1: Statistical Outliers (> 3x or < 0.3x median)
+        if n_valid_intervals >= 3:
+            if rate > median_rate * 3 or rate < median_rate * 0.3:
+                actual_weights[i] = actual_weights[i] * 0.1
+
+        # RULE 2: Top-up Paradox (Interval < 24 hours)
+        # If buying tokens twice in a day, it's usually a top-up, not 24h consumption.
+        r_curr = sorted_readings[i]
+        r_prev = sorted_readings[i+1]
+        d_curr = r_curr["purchase_date"] if isinstance(r_curr["purchase_date"], datetime) else datetime.fromisoformat(r_curr["purchase_date"].replace("Z", "+00:00"))
+        d_prev = r_prev["purchase_date"] if isinstance(r_prev["purchase_date"], datetime) else datetime.fromisoformat(r_prev["purchase_date"].replace("Z", "+00:00"))
+        
+        seconds = (d_curr - d_prev).total_seconds()
+        if seconds < 86400: # < 24 hours
+            # CLAMP: Instead of just penalizing weight, we cap the rate at 1.5x median
+            # this prevents the 360 units/day spike from ever entering the average.
+            rates[i] = min(rates[i], median_rate * 1.5)
+            actual_weights[i] = actual_weights[i] * 0.1 # Still penalize weight
+                
+    # Re-normalize weights
     weight_sum = sum(actual_weights)
     normalized_weights = [w / weight_sum for w in actual_weights]
 
     weighted_rate = sum(r * w for r, w in zip(rates, normalized_weights))
     return (round(weighted_rate, 2), n_valid_intervals)
+
 
 def blend_rates(
     personal_rate: Optional[float],
