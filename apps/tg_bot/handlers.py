@@ -1189,6 +1189,24 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _reply(update, M.TOKEN_ENTRY_PROMPT)
 
 
+# ── /gas (P17-T1) ────────────────────────────────────────────────────────────
+
+async def cmd_gas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+    
+    # P7-T6: Feature Gating
+    if not await is_feature_allowed(str(tenant["id"]), "utility_tracking"):
+        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Gas Tracking", upgrade_link="/upgrade"))
+        return
+        
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_gas"))
+    await _reply(update, M.GAS_SMS_PROMPT)
+
+
 # ── /fuliza (P4-T2) ──────────────────────────────────────────────────────────
 
 async def cmd_fuliza(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1927,6 +1945,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await _reply(update, response)
         except ValueError:
             await _reply(update, M.TOKEN_INVALID_VALUE)
+        return
+
+
+    if state == "awaiting_gas":
+        parts = text.split()
+        if len(parts) < 2:
+            await _reply(update, M.GAS_SMS_PROMPT)
+            return
+            
+        try:
+            amount_kg = float(parts[0].replace(",", ""))
+            d_str = parts[1]
+            
+            from dateutil import parser as date_parser
+            p_date = date_parser.parse(d_str, dayfirst=True).date()
+            
+            tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("gas_entries").insert({
+                    "tenant_id": str(tenant["id"]),
+                    "amount_kg": amount_kg,
+                    "purchase_date": p_date.isoformat()
+                }).execute()
+            )
+            
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            await _reply(update, M.GAS_RECORDED_SUCCESS.format(
+                amount_kg=amount_kg,
+                purchase_date=p_date.strftime("%d %b %Y")
+            ))
+        except Exception as e:
+            log.error("gas_entry_failed", error=str(e))
+            await _reply(update, "❌ *Invalid Input*\nPlease use format: `6 22/04/2026`")
         return
 
 

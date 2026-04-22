@@ -27,6 +27,7 @@ CMD_INDIVIDUAL_CORE = [
     BotCommand("help", "Show available commands"),
     BotCommand("mystatus", "Your KRA & SHA status"),
     BotCommand("tokens", "Log electricity units"),
+    BotCommand("gas", "Log Gas refill"),
     BotCommand("fuliza", "Log Fuliza balance"),
     BotCommand("subscribe", "Add bill reminder"),
 ]

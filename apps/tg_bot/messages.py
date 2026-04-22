@@ -445,6 +445,25 @@ Your tokens are running low!
 Top up soon to avoid a blackout!
 """
 
+GAS_SMS_PROMPT = """
+🔥 *Gas Refill Tracker*
+
+Please enter your gas refill details:
+`6 22/04/2026` (for 6kg)
+`13 22/04/2026` (for 13kg)
+
+Example: `13 22/04/2026`
+"""
+
+GAS_RECORDED_SUCCESS = """
+🔥 *Gas Refill Recorded!*
+
+Size: {amount_kg}kg
+Date: {purchase_date}
+
+_I will start tracking your usage patterns as you log more refills._
+"""
+
 FULIZA_SMS_PROMPT = """
 💸 *Fuliza SMS Tracker*
 Please forward your Safaricom Fuliza balance SMS here.
