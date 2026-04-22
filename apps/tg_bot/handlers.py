@@ -98,6 +98,9 @@ def _get_htype_keyboard(current_htype: Optional[str] = None) -> InlineKeyboardMa
         btn = InlineKeyboardButton(f"{prefix}{label}", callback_data=f"htype_{code}")
         keyboard.append([btn])
     
+    # Navigation: Return to settings
+    keyboard.append([InlineKeyboardButton("⬅️ Back to Settings", callback_data="back_to_settings")])
+    
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -170,18 +173,25 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await _reply(update, M.NOT_REGISTERED)
         return
 
+    # FAANG Grade: Surface current state in the menu labels
+    ht_code = tenant.get("household_type", "basic")
+    ht_label = HOUSEHOLD_TYPE_LABELS.get(ht_code, "Set Type")
+    
+    lang_code = tenant.get("preferred_language", "en")
+    lang_label = "English" if lang_code == "en" else "Swahili"
+
     keyboard = [
         [
             InlineKeyboardButton("✏️ Business Name", callback_data="set_name"),
-            InlineKeyboardButton("🌍 Language", callback_data="set_lang"),
+            InlineKeyboardButton(f"🌍 Lang: {lang_label}", callback_data="set_lang"),
         ],
         [
-            InlineKeyboardButton("🏠 Home Type", callback_data="set_htype"),
-            InlineKeyboardButton("� Phone Number", callback_data="set_phone"),
+            InlineKeyboardButton(f"🏠 Home: {ht_label}", callback_data="set_htype"),
+            InlineKeyboardButton("📱 Phone Number", callback_data="set_phone"),
         ],
         [
-            InlineKeyboardButton("� Till Number", callback_data="set_till"),
-            InlineKeyboardButton("�� Employees", callback_data="set_emp"),
+            InlineKeyboardButton("🧾 Till Number", callback_data="set_till"),
+            InlineKeyboardButton("👥 Employees", callback_data="set_emp"),
         ],
         [
             InlineKeyboardButton("💰 VAT Status", callback_data="set_vat"),
@@ -208,6 +218,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "🏠 *Select your Home Type:*\n\nThis updates your electricity prediction baselines.", 
             reply_markup=reply_markup
         )
+
+    elif data == "back_to_settings":
+        # Re-use cmd_settings logic for a seamless experience
+        await cmd_settings(update, context)
+        return
 
     elif data == "set_name":
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_settings_name"))
@@ -365,6 +380,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
             await query.edit_message_text(
                 f"🏠 Home type updated to *{display_label}*\n{recalc_msg}", 
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("⚙️ Back to Settings", callback_data="back_to_settings")
+                ]]),
                 parse_mode=ParseMode.MARKDOWN
             )
             
@@ -843,7 +861,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         try:
             ts = datetime.strptime(extracted["timestamp"], "%Y-%m-%d %H:%M:%S")
         except Exception:
-            ts = datetime.utcnow()
+            ts = datetime.now(timezone.utc)
             
         t_type = getattr(TransactionType, extracted.get("transaction_type", "UNKNOWN"), TransactionType.UNKNOWN)
 
@@ -896,7 +914,7 @@ async def _run_pipeline_and_reply(
         txs = custom_transactions
         if not txs:
             from datetime import datetime
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
             
             live_resp = db.get_client().table("live_transactions").select("*").eq("tenant_id", str(tenant["id"])).gte("trans_time", month_start).execute()
@@ -950,7 +968,7 @@ async def _run_pipeline_and_reply(
                     None,
                     lambda: db.save_report(
                         tenant_id=str(tenant["id"]),
-                        period=datetime.utcnow().strftime("%Y-%m"),
+                        period=datetime.now(timezone.utc).strftime("%Y-%m"),
                         summary={
                             "income": r.total_income,
                             "expenses": r.total_expenses,
@@ -1004,8 +1022,8 @@ async def cmd_vat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     net_vat = max(output_vat - input_vat, 0)
     refund = max(input_vat - output_vat, 0)
 
-    # Due on 20th of next month
-    today = datetime.utcnow()
+    # VAT Hygiene (P15-H2)
+    today = datetime.now(timezone.utc)
     next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
     due_date = next_month.replace(day=20)
     days_left = (due_date.date() - today.date()).days
