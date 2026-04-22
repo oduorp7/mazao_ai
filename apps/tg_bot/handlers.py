@@ -15,12 +15,13 @@ Conversation states (stored in DB):
 
 from __future__ import annotations
 
-import sys
+import structlog
+import asyncio
 import os
 import re
-import asyncio
 from datetime import datetime, timedelta
-from pathlib import Path
+from typing import Dict, List, Optional
+from apps.agent import estimator
 
 from telegram import (
     Update,
@@ -287,6 +288,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             prompt += f"\n\nPress enter (or reply with a new number) to use *{tenant['phone_number']}*."
             
         await query.edit_message_text(prompt)
+
+    elif data.startswith("htype_"):
+        htype = data.replace("htype_", "")
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"household_type": htype}))
+        await query.edit_message_text(f"✅ Home type set to *{htype.capitalize()}*.\n\nNow, let's record your tokens.", parse_mode=ParseMode.MARKDOWN)
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
+        await context.bot.send_message(chat_id=tid, text=M.TOKEN_ENTRY_PROMPT, parse_mode=ParseMode.MARKDOWN)
+        return
 
     elif data.startswith("lang_"):
         try:
@@ -996,6 +1005,19 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not await is_feature_allowed(str(tenant["id"]), "utility_tracking"):
         await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Token Tracking", upgrade_link="/upgrade"))
         return
+
+    # P15-T1A: Household type capture (Once per user)
+    # Check if household_type is already set in the database
+    h_type = tenant.get("household_type")
+    if not h_type:
+        keyboard = [
+            [InlineKeyboardButton("1. Basic (No fridge)", callback_data="htype_basic")],
+            [InlineKeyboardButton("2. Standard (Fridge + TV)", callback_data="htype_standard")],
+            [InlineKeyboardButton("3. Comfort (Fridge + TV + Heater)", callback_data="htype_comfort")],
+            [InlineKeyboardButton("4. Business Premises", callback_data="htype_business")]
+        ]
+        await _reply(update, "🏠 *Before we record your tokens, what best describes your home?*\n\nThis helps us provide accurate predictions from day one.", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
         
     await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
     await _reply(update, M.TOKEN_ENTRY_PROMPT)
@@ -1444,7 +1466,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if state == "awaiting_tokens":
         try:
             # P10-T1: Validation (Numeric check)
-            # Format: "units date [amount]" (e.g. "25.5 20/04/2026 1000")
+            # Format: "units date [amount]" (e.g. "25.5 22/04/2026 1000")
             parts = text.split()
             if len(parts) < 2:
                 await _reply(update, "Please enter both units and date. Example: `25.5 22/04/2026`")
@@ -1454,7 +1476,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             d_str = parts[1]
             p_date = datetime.strptime(d_str, "%d/%m/%Y").date()
             
-            # P15-T1B: Optional amount paid
+            # P15-T1D: Optional amount paid
             amount_paid = None
             if len(parts) >= 3:
                 try:
@@ -1475,66 +1497,95 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 }).execute()
             )
             
-            # P15-T1A: Projection math with improved default
-            # Get previous entries to calculate real daily rate
+            # P15-T1B: Hybrid Projection Math
+            # Get historical readings
             token_resp = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: db.get_client().table("token_entries")
                 .select("units, purchase_date")
                 .eq("tenant_id", str(tenant["id"]))
                 .order("purchase_date", desc=True)
-                .limit(5)
                 .execute()
             )
+            readings = token_resp.data or []
+            n = len(readings)
             
-            daily_rate = 1.5 # P15-T1A: New default for Kenyan households
+            # Calculate rates
+            h_type = tenant.get("household_type", "standard")
+            pop_rate = estimator.get_population_baseline(h_type)
+            pers_rate = estimator.calculate_weighted_personal_rate(readings)
             
-            if token_resp.data and len(token_resp.data) >= 2:
-                # Calculate from last 2 entries
-                e1 = token_resp.data[0]
-                e2 = token_resp.data[1]
-                d1 = datetime.fromisoformat(e1["purchase_date"]).date()
-                d2 = datetime.fromisoformat(e2["purchase_date"]).date()
-                days = (d1 - d2).days
-                if days > 0:
-                    # Rate = units of e2 consumed between d2 and d1
-                    daily_rate = round(float(e2["units"]) / days, 2)
-                    # Safety bounds for rate
-                    daily_rate = max(min(daily_rate, 15.0), 0.5)
-
+            # Blended Daily Rate
+            daily_rate = estimator.blend_rates(pers_rate, pop_rate, n)
+            
+            # Calculations
             days_remaining = int(units / daily_rate)
             depletion_date = (datetime.utcnow() + timedelta(days=days_remaining)).strftime("%d %b %Y")
             
-            # P15-T1B: Cost breakdown calculation
+            # Confidence Info
+            conf = estimator.get_confidence_info(n)
+            src_label = estimator.get_source_label(n, h_type)
+            
+            # Anomaly Detection
+            anomaly_warning = ""
+            if n >= 3 and pers_rate:
+                # Calculate rate for THIS reading if possible
+                if n >= 2:
+                    d1 = datetime.fromisoformat(readings[0]["purchase_date"].replace("Z", "+00:00")).date()
+                    d2 = datetime.fromisoformat(readings[1]["purchase_date"].replace("Z", "+00:00")).date()
+                    days = (d1 - d2).days
+                    if days > 0:
+                        this_rate = units / days
+                        if estimator.detect_anomaly(this_rate, readings[1:]):
+                            anomaly_warning = "\n\n⚠️ *Anomaly Detected:* This reading seems unusual compared to your history."
+
+            # Range/Confidence Interval
+            range_text = ""
+            interval = estimator.confidence_interval(readings, daily_rate)
+            if interval:
+                range_text = f"\nRange: {interval[0]} - {interval[1]} units/day"
+
+            # Encouragement
+            encouragement = ""
+            if n == 1: encouragement = "\n_Recording more tokens will improve accuracy._"
+            elif 2 <= n <= 4: encouragement = "\n_Learning your patterns..._"
+            elif 5 <= n <= 9: encouragement = "\n_High accuracy achieved._"
+            
+            # Cost breakdown (P15-T1D)
             breakdown_text = ""
             if amount_paid:
-                # Kenyan Token logic approx (Tax/Levies ~45-50% on low/mid tier)
-                # For 1000 KES, ~525 is actual electricity value (units * ~18.5)
-                # This is an estimate for UI feedback
-                elec_value = units * 18.55 # Average base rate
-                if elec_value > amount_paid: 
+                # Using 18.55 KES/unit baseline for Kenya standard tariff
+                elec_value = units * 18.55
+                if elec_value > amount_paid:
                     elec_value = amount_paid * 0.525 # Fallback to 52.5% split
                 
                 tax_value = amount_paid - elec_value
                 elec_pct = (elec_value / amount_paid) * 100
                 tax_pct = 100 - elec_pct
                 
-                breakdown_text = M.TOKEN_COST_BREAKDOWN.format(
-                    elec_amount=elec_value,
-                    elec_pct=elec_pct,
-                    tax_amount=tax_value,
-                    tax_pct=tax_pct
+                breakdown_text = (
+                    f"\n\n💡 *Cost Breakdown:*\n"
+                    f"Actual electricity: KES {elec_value:,.0f} ({elec_pct:.0f}%)\n"
+                    f"Taxes and levies: KES {tax_value:,.0f} ({tax_pct:.0f}%)\n\n"
+                    f"Only {elec_pct:.0f}% of your payment was electricity."
                 )
 
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             
-            await _reply(update, M.TOKEN_RECORDED_SUCCESS.format(
-                units=units,
-                daily_rate=daily_rate,
-                depletion_date=depletion_date,
-                days_remaining=days_remaining,
-                breakdown=breakdown_text
-            ))
+            response = (
+                f"⚡ *Token Recorded!*\n\n"
+                f"Units: {units}\n"
+                f"Daily Rate: {daily_rate} units ({src_label})\n"
+                f"Est. Depletion: {depletion_date}\n"
+                f"Days Left: {days_remaining}\n"
+                f"Confidence: {conf['bar']} {conf['label']}"
+                f"{range_text}"
+                f"{anomaly_warning}"
+                f"{breakdown_text}"
+                f"{encouragement}"
+            )
+            
+            await _reply(update, response)
         except ValueError:
             await _reply(update, M.TOKEN_INVALID_VALUE)
         return
