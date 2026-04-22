@@ -13,5 +13,6 @@
 | 8     | 2026-04-21 | fa62b8a | Phase 12: Daraja C2B Integration + Multi-Provider LLM (Anthropic/OpenRouter). |
 | 9     | 2026-04-22 | fa62b8a | Phase 14: FAANG-Grade CI/CD Pipeline + P0 C2B Payload Hotfix. |
 | HF1   | 2026-04-20 | [NEW]   | P0 Critical Fixes: CF-1 (KRA Redaction), CF-2 (Tokens Harden), CF-3 (Subs Silence). |
+| 15    | 2026-04-22 | e8645d3 | Phase 15 Hardening: Inline Switcher, Status-Aware Settings, and UTC Hygiene. |
 
 *Note: Sign-off by Chief Engineer required for each phase transition.*
