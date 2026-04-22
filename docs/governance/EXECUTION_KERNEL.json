@@ -2,33 +2,153 @@
   "artifact_id": "MAZAO_EXECUTION_KERNEL_V1",
   "artifact_type": "PROMPT_GOVERNANCE_KERNEL",
   "status": "ACTIVE_MANDATORY",
-  "purpose": "Lean execution-governance wrapper for Mazao AI surgical work.",
+  "purpose": "Lean execution-governance wrapper for Mazao AI surgical work. Inspired by NDII discipline, but not a duplication, dependency, or runtime integration of NDII-Kernel.",
   "identity": {
     "project": "Mazao AI",
     "chief_engineer": "USER",
     "executor": "Antigravity",
+    "supervisory_model_roles": [
+      "Elite FAANG Engineer",
+      "Enterprise AI Architect",
+      "Product Manager",
+      "Supervisor"
+    ],
     "execution_mode": "SURGICAL_ONLY"
+  },
+  "non_ndii_boundary": {
+    "is_ndii_kernel_clone": false,
+    "is_ndii_runtime_dependency": false,
+    "is_multi_sector_orchestration_engine": false,
+    "allowed_reuse": [
+      "phase gating discipline",
+      "fail-closed execution discipline",
+      "completion-report discipline",
+      "scope-lock discipline",
+      "anti-drift discipline"
+    ],
+    "forbidden_reuse": [
+      "oracle pipeline replication",
+      "node orchestration",
+      "sector abstraction layers",
+      "cross-project protocol injection",
+      "heavy execution graph systems"
+    ]
   },
   "binding_rules": {
     "rule_01": "No prompt may execute unless previous prompt mandate is explicitly verified as completed.",
     "rule_02": "Every prompt must declare one objective only.",
     "rule_03": "No file may be touched unless explicitly listed in allowed_files.",
-    "rule_05": "No new feature, no refactor, no cleanup outside stated objective.",
+    "rule_04": "No function/class/module may be changed unless explicitly listed in allowed_symbols or directly required within allowed_files for the objective.",
+    "rule_05": "No new feature, no refactor, no cleanup, no renaming, no optimization outside stated objective.",
+    "rule_06": "No schema change unless prompt explicitly states SCHEMA_CHANGE_ALLOWED=true.",
     "rule_07": "If previous mandate is incomplete, executor must halt and return BLOCKER_REPORT.",
-    "rule_10": "Every prompt must reference project roles and machine-readable supervisor report requirement.",
-    "rule_12": "Every completion report must be under 120 lines and machine-readable."
+    "rule_08": "If uncertainty exists, executor must fail closed, halt, and return BLOCKER_REPORT.",
+    "rule_09": "If scope pressure appears during execution, executor must not continue by judgment call; executor must halt and report.",
+    "rule_10": "Every prompt must reference project roles, commit/push breakpoint policy, and machine-readable supervisor report requirement.",
+    "rule_11": "No next prompt may be executed until prior report status is PASSED or COMPLETED.",
+    "rule_12": "Every completion report must be under 120 lines and machine-readable.",
+    "rule_13": "All changes must minimize LOC and blast radius.",
+    "rule_14": "Any collateral impact must be explicitly stated, even if zero.",
+    "rule_15": "Mazao governance is binding even when not restated in full; prompt-local scope rules are additive, not substitutive."
+  },
+  "default_execution_contract": {
+    "previous_task_check_required": true,
+    "halt_if_previous_report_missing": true,
+    "halt_if_previous_status_not_passed": true,
+    "single_objective_only": true,
+    "default_fail_mode": "FAIL_CLOSED",
+    "default_code_change_mode": "MINIMAL_DIFF",
+    "default_report_format": "JSON_ONLY",
+    "default_report_line_cap": 120
+  },
+  "scope_control": {
+    "mandatory_fields": [
+      "allowed_files",
+      "allowed_symbols",
+      "forbidden_actions",
+      "max_files_touched",
+      "max_loc_per_file"
+    ],
+    "default_forbidden_actions": [
+      "new module creation",
+      "new feature creation",
+      "cross-cutting refactor",
+      "naming cleanup",
+      "format-only edits",
+      "dependency changes unless explicitly requested",
+      "schema changes unless explicitly allowed",
+      "test suite expansion unless explicitly requested",
+      "docs edits unless explicitly requested"
+    ],
+    "default_limits": {
+      "max_files_touched": 3,
+      "max_loc_per_file": 80
+    }
+  },
+  "chain_enforcement": {
+    "require_previous_phase_completion": true,
+    "accepted_previous_statuses": [
+      "PASSED",
+      "COMPLETED",
+      "VERIFIED_NO_IMPLEMENTATION_REQUIRED"
+    ],
+    "rejected_previous_statuses": [
+      "MISSING",
+      "PARTIAL",
+      "FAILED",
+      "BLOCKED",
+      "UNKNOWN"
+    ],
+    "mandatory_previous_report_fields": [
+      "status",
+      "objective_status",
+      "files_changed",
+      "verification_status"
+    ]
+  },
+  "commit_push_breakpoint_policy": {
+    "must_be_referenced_in_every_prompt": true,
+    "policy": [
+      "Do not commit before mandate is satisfied.",
+      "Do not push before validation passes.",
+      "If mandate is partial, do not commit/push; return BLOCKER_REPORT or PARTIAL_REPORT only if explicitly allowed.",
+      "If prompt explicitly requests commit, commit only after validation.",
+      "If prompt explicitly requests push, push only after commit and validation.",
+      "If commit hash is produced, include it in completion report."
+    ]
+  },
+  "validation_policy": {
+    "minimum_required_checks": [
+      "syntax/parse validation",
+      "targeted runtime path validation",
+      "targeted regression validation for untouched adjacent path",
+      "explicit confirmation objective was satisfied"
+    ],
+    "if_validation_cannot_be_run": "HALT_AND_REPORT_UNKNOWN_NOT_ASSUMED",
+    "no_false_claims_allowed": true
   },
   "reporting_contract": {
     "required_terminal_string": "return under 120 lines machine readable report for supervisors",
+    "allowed_terminal_reports": [
+      "PHASE_COMPLETION",
+      "TASK_COMPLETION",
+      "BLOCKER_REPORT",
+      "VERIFICATION_REPORT"
+    ],
     "required_report_fields": [
       "report_type",
       "prompt_id",
       "status",
       "objective",
       "files_modified",
-      "verification_status",
+      "files_created",
+      "files_deleted",
+      "tests_run",
       "regression_checks",
       "collateral_damage",
+      "commit_status",
+      "push_status",
+      "known_issues",
       "ready_for_next_prompt"
     ]
   }
