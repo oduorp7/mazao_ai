@@ -1189,6 +1189,65 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _reply(update, M.TOKEN_ENTRY_PROMPT)
 
 
+# ── Gas Helpers (P17-T1D) ──────────────────────────────────────────────────
+
+async def _get_gas_projection(tid: int, tenant: Dict, refill_kg: float = 0) -> Dict:
+    """Calculates burn rate and depletion projection for gas.
+    
+    If refill_kg > 0, it assumes a refill was just performed today.
+    Otherwise, it calculates remaining days based on the latest historical entry.
+    """
+    import math as _math
+    
+    gas_resp = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: db.get_client().table("gas_entries")
+        .select("amount_kg, purchase_date")
+        .eq("tenant_id", str(tenant["id"]))
+        .order("purchase_date", desc=True)
+        .execute()
+    )
+    
+    history = [{"units": r["amount_kg"], "purchase_date": r["purchase_date"]} for r in gas_resp.data]
+    n = len(history)
+    
+    # Baseline & Personal Rate
+    h_type = tenant.get("household_type")
+    pop_rate = estimator.get_gas_population_baseline(h_type)
+    pers_rate, n_valid = estimator.calculate_weighted_personal_rate(history)
+    daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
+    if daily_rate <= 0: daily_rate = pop_rate
+    
+    # Calculate Days Remaining
+    now = datetime.now(timezone.utc)
+    
+    if refill_kg > 0:
+        # Scenario A: Just refilled today
+        days_rem = int(_math.ceil(refill_kg / daily_rate))
+    elif n > 0:
+        # Scenario B: Standing status from history
+        latest = history[0]
+        l_date = datetime.fromisoformat(latest["purchase_date"].replace("Z", "+00:00"))
+        if l_date.tzinfo is None: l_date = l_date.replace(tzinfo=timezone.utc)
+        
+        days_since = (now - l_date).days
+        total_days = latest["units"] / daily_rate
+        days_rem = int(_math.ceil(total_days - days_since))
+    else:
+        # Scenario C: No data
+        return {"n": 0, "daily_rate": pop_rate, "days_remaining": 0, "depletion_date": "N/A", "history": []}
+
+    depletion_date = (now + timedelta(days=max(0, days_rem))).strftime("%d %b %Y")
+    
+    return {
+        "n": n,
+        "daily_rate": daily_rate,
+        "days_remaining": days_rem,
+        "depletion_date": depletion_date,
+        "history": gas_resp.data[:3] # Last 3 for the table
+    }
+
+
 # ── /gas (P17-T1) ────────────────────────────────────────────────────────────
 
 async def cmd_gas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1198,13 +1257,33 @@ async def cmd_gas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, M.NOT_REGISTERED)
         return
     
-    # P7-T6: Feature Gating
     if not await is_feature_allowed(str(tenant["id"]), "utility_tracking"):
         await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Gas Tracking", upgrade_link="/upgrade"))
         return
         
+    # P17-T1D: Render Dashboard if history exists
+    proj = await _get_gas_projection(tid, tenant)
+    
+    if proj["n"] > 0:
+        # Build history table
+        rows = []
+        for r in proj["history"]:
+            d = datetime.fromisoformat(r["purchase_date"].replace("Z", "+00:00")).strftime("%d/%m")
+            rows.append(f"├ {d}: {r['amount_kg']}kg")
+        history_table = "\n".join(rows) if rows else "No entries yet."
+        
+        days_text = f"{proj['days_remaining']} days" if proj['days_remaining'] > 0 else "⚠️ Empty or Overdue"
+        
+        await _reply(update, M.GAS_DASHBOARD.format(
+            depletion_date=proj["depletion_date"],
+            days_remaining=days_text,
+            history_table=history_table
+        ))
+    else:
+        # No history? Just show the prompt
+        await _reply(update, M.GAS_SMS_PROMPT)
+
     await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_gas"))
-    await _reply(update, M.GAS_SMS_PROMPT)
 
 
 # ── /fuliza (P4-T2) ──────────────────────────────────────────────────────────
@@ -1978,46 +2057,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             
-            # ── Gas Estimation Logic (P17-T1B) ───────────────────────────────
-            gas_resp = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: db.get_client().table("gas_entries")
-                .select("amount_kg, purchase_date")
-                .eq("tenant_id", str(tenant["id"]))
-                .order("purchase_date", desc=True)
-                .execute()
-            )
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             
-            # Map amount_kg -> units for estimator compatibility
-            history = [{"units": r["amount_kg"], "purchase_date": r["purchase_date"]} for r in gas_resp.data]
-            n = len(history)
-            
-            # P17-T1C: Profile-aware population baseline (Basic/Standard/Comfort/Business)
-            h_type = tenant.get("household_type")
-            pop_rate = estimator.get_gas_population_baseline(h_type)
-            
-            pers_rate, n_valid = estimator.calculate_weighted_personal_rate(history)
-            daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
-            
-            if daily_rate <= 0:
-                daily_rate = pop_rate
-                
-            # Depletion Math (Simpler for gas: Current KG / Daily Rate)
-            import math as _math
-            days_remaining = int(_math.ceil(amount_kg / daily_rate))
-            depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
+            # ── Gas Estimation Logic (P17-T1D: Refactored) ───────────────────
+            proj = await _get_gas_projection(tid, tenant, refill_kg=amount_kg)
             
             # Confidence Label
-            conf = estimator.get_confidence_info(n)
+            conf = estimator.get_confidence_info(proj["n"])
             conf_text = f"Confidence: {conf['bar']} {conf['label']}"
-            if n <= 1:
+            if proj["n"] <= 1:
                 conf_text += "\n_Recording more refills will improve accuracy._"
 
             await _reply(update, M.GAS_RECORDED_SUCCESS.format(
                 amount_kg=amount_kg,
-                daily_rate=daily_rate,
-                days_remaining=days_remaining,
-                depletion_date=depletion_date,
+                daily_rate=proj["daily_rate"],
+                days_remaining=proj["days_remaining"],
+                depletion_date=proj["depletion_date"],
                 confidence_info=conf_text
             ))
         except Exception as e:

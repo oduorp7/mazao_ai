@@ -466,6 +466,20 @@ Daily Rate: {daily_rate}kg
 {confidence_info}
 """
 
+GAS_DASHBOARD = """
+🔥 *Gas Dashboard*
+
+🗓️ *Est. Depletion:* {depletion_date}
+⏳ *Days Left:* {days_remaining}
+
+📜 *Recent History:*
+{history_table}
+
+💡 *To log a new refill:*
+Enter: `amount date`
+Example: `13 22/04/2026`
+"""
+
 FULIZA_SMS_PROMPT = """
 💸 *Fuliza SMS Tracker*
 Please forward your Safaricom Fuliza balance SMS here.
