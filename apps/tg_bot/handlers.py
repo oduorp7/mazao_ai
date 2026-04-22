@@ -1992,8 +1992,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             history = [{"units": r["amount_kg"], "purchase_date": r["purchase_date"]} for r in gas_resp.data]
             n = len(history)
             
-            # Reuse core math: Weighted personal rate + population blend (0.2kg/day)
-            pop_rate = estimator.GAS_DAILY_BASELINE
+            # P17-T1C: Profile-aware population baseline (Basic/Standard/Comfort/Business)
+            h_type = tenant.get("household_type")
+            pop_rate = estimator.get_gas_population_baseline(h_type)
+            
             pers_rate, n_valid = estimator.calculate_weighted_personal_rate(history)
             daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
             

@@ -9,7 +9,12 @@ POPULATION_BASELINES = {
     "business": 8.0
 }
 
-GAS_DAILY_BASELINE = 0.2 # Population fallback for gas consumption (kg/day)
+GAS_POPULATION_BASELINES = {
+    "basic": 0.10,    # Minimal cooking
+    "standard": 0.25, # Regular household
+    "comfort": 0.45,  # Heavy cooking / large family
+    "business": 1.20  # Commercial / catering
+}
 
 CONFIDENCE_LABELS = {
     "0-1": {"label": "Grid baseline", "bar": "░░░░░"},
@@ -26,8 +31,18 @@ SOURCE_LABELS = {
 }
 
 def get_population_baseline(household_type: str) -> float:
-    """Returns daily rate from population baselines."""
+    """Returns daily electricity rate from population baselines."""
     return POPULATION_BASELINES.get(household_type.lower(), POPULATION_BASELINES["standard"])
+
+def get_gas_population_baseline(household_type: str) -> float:
+    """Returns daily gas rate (kg/day) from population baselines.
+    
+    P17-T1C: Reuses the existing household_type mapping to ground gas predictions.
+    Default: standard (0.25 kg/day).
+    """
+    if not household_type:
+        return GAS_POPULATION_BASELINES["standard"]
+    return GAS_POPULATION_BASELINES.get(household_type.lower(), GAS_POPULATION_BASELINES["standard"])
 
 def calculate_weighted_personal_rate(readings: List[Dict]) -> Tuple[Optional[float], int]:
     """Calculates weighted average from actual purchase history.
