@@ -14,7 +14,21 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 *   **Multi-language**: Seamless switching between English and Swahili.
 *   **Robust Trial Management**: Automated 14-day trials for all new users.
 
-## 🛠 Active Commands (21)
+## �️ Architecture & Knowledge Base
+
+Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technical and strategic artifacts are consolidated in the `/docs` directory.
+
+### 📚 Documentation Map
+- **[Strategy & Roadmap](docs/strategy/ROADMAP.md)**: Product vision, growth milestones, and first-customer outreach guide.
+- **[Architecture](docs/architecture/LLM_FACTORY.md)**: Technical design of the Multi-LLM factory, fallback logic, and data flow.
+- **[Governance & Protocols](docs/governance/PROTOCOL.json)**: Engineering rules, security protocols, and Phase-Gate requirements.
+- **[Legal & Compliance](docs/legal/PRIVACY_POLICY.md)**: Data protection (ODPC), privacy disclosures, and KRA/ODPC compliance.
+- **[Engineering Contract](docs/governance/CONTRACT.md)**: Service Level Agreements (SLA) and development standards.
+- **[Phase History](docs/history/PHASE_LOG.md)**: Detailed audit log of every completed engineering phase.
+
+---
+
+## �🛠 Active Commands (21)
 
 | Command | Description | Relevant To | Tier |
 |---------|-------------|-------------|------|
