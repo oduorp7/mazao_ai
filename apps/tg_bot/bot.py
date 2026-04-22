@@ -284,13 +284,26 @@ async def main() -> None:
             payload = await request.json()
             log.info("daraja_confirmation_received", payload=payload)
             
+            # P0_HOTFIX_PAYLOAD_MAPPING: Explicitly map Safaricom payload to DB columns
+            mapping = {
+                "transaction_type": payload.get("TransactionType"),
+                "trans_id": payload.get("TransID"),
+                "trans_time": payload.get("TransTime"),
+                "trans_amount": payload.get("TransAmount"),
+                "business_short_code": payload.get("BusinessShortCode"),
+                "bill_ref_number": payload.get("BillRefNumber"),
+                "msisdn": payload.get("MSISDN"),
+                "first_name": payload.get("FirstName")
+            }
+            
             from apps.payments.daraja import DarajaProvider
             provider = DarajaProvider()
             parsed = await provider.handle_webhook(payload)
             
             if parsed:
                 # This task handles the DB write to live_transactions and tenant notification
-                asyncio.create_task(process_live_transaction(app.bot, parsed))
+                # We pass the raw mapping now to ensure full field population
+                asyncio.create_task(process_live_transaction(app.bot, parsed, raw_mapping=mapping))
                 log.info("daraja_confirmation_processed", trans_id=parsed.trans_id)
             
             return web.json_response({"ResultCode": 0, "ResultDesc": "Accepted"})
@@ -337,7 +350,7 @@ if __name__ == "__main__":
         pass
 
 
-async def process_live_transaction(bot: Bot, parsed):
+async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
     """P6-T2 & P7-T5: Routes transaction to tenant or subscription processor."""
     try:
         from apps.tg_bot.db import get_client
@@ -424,16 +437,25 @@ async def process_live_transaction(bot: Bot, parsed):
         
         # 3. Insert into live_transactions
         try:
-            db.table("live_transactions").insert({
-                "tenant_id": tenant_id,
-                "trans_id": parsed.trans_id,
-                "trans_time": parsed.timestamp.isoformat(),
-                "trans_amount": parsed.amount,
-                "msisdn": parsed.msisdn,
-                "first_name": parsed.first_name,
-                "bill_ref_number": parsed.bill_ref,
-                "provider": parsed.provider
-            }).execute()
+            # P0_HOTFIX_PAYLOAD_MAPPING: Use raw_mapping if available for full field coverage
+            if raw_mapping:
+                insert_data = {**raw_mapping, "tenant_id": tenant_id, "provider": parsed.provider}
+                # Ensure trans_amount is float (Safaricom sends as string)
+                if insert_data.get("trans_amount"):
+                    insert_data["trans_amount"] = float(insert_data["trans_amount"])
+            else:
+                insert_data = {
+                    "tenant_id": tenant_id,
+                    "trans_id": parsed.trans_id,
+                    "trans_time": parsed.timestamp.isoformat(),
+                    "trans_amount": parsed.amount,
+                    "msisdn": parsed.msisdn,
+                    "first_name": parsed.first_name,
+                    "bill_ref_number": parsed.bill_ref,
+                    "provider": parsed.provider
+                }
+
+            db.table("live_transactions").insert(insert_data).execute()
             log.info("c2b_confirmation_db_write_success", trans_id=parsed.trans_id)
         except Exception as e:
             if "duplicate key" in str(e).lower():
