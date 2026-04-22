@@ -57,8 +57,9 @@ The "Wow" factor. Predicts when electricity tokens, gas, or cash will run out.
 | **Sprint 2** | **In Progress** | M-Pesa Statement Parser (CSV/PDF), Individual Mode, SHA/NSSF engine. | Real statement produces correct numbers. |
 | **Sprint 3** | **Completed** | **Utility Prediction (KPLC Tokens)**, Fuliza trackers, Logic Hardening. | Electricity depletion accurate within 2 days. |
 | **Sprint 4** | **Completed** | **Subscription Reminders**, Business Dashboard (/status), Fly.io Health Checks. | P5 hardening complete. |
-| **Sprint 5** | **In Progress** | **Daraja C2B Webhook Integration**. Real-time transaction feed replaces file upload. | Live transactions reach bot in < 30s. |
-| **Sprint 6** | Month 4–6 | Cooking gas estimator, Regional Expansion, Credit scoring layer. | First paying customer outside Kenya. |
+| **Sprint 5** | **Completed** | **Daraja C2B Webhook Integration**. Real-time transaction feed replaces file upload. | Live transactions reach bot in < 30s. |
+| **Sprint 6** | **In Progress** | **CI/CD Pipeline & Multi-LLM Hardening**. 4-gate protection & provider failover. | Zero regression deployment. |
+| **Sprint 7** | Month 4–6 | Cooking gas estimator, Regional Expansion, Credit scoring layer. | First paying customer outside Kenya. |
 
 ---
 
@@ -90,7 +91,8 @@ The "Wow" factor. Predicts when electricity tokens, gas, or cash will run out.
 - [x] **Deploy to Fly.io**: Transfer from Local Workspace to 24/7 cloud hosting.
 - [x] **Sprint 3 Execution**: Utility Prediction & Bot Hardening.
 - [x] **Sprint 4 Execution**: Subscription Reminders & /status Dashboard.
-- [/] **Sprint 5 Planning**: Daraja C2B Webhook Integration (Real-time feeds).
+- [x] **Sprint 5 Execution**: Daraja C2B Webhook Integration (Real-time feeds).
+- [x] **Sprint 6 Execution**: CI/CD Pipeline & Multi-LLM Hardening.
 - [ ] **Publish Privacy Policy**: Notion/Markdown page linked to bot greeting.
 
 ---

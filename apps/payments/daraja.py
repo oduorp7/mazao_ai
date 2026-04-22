@@ -16,10 +16,10 @@ class DarajaProvider(PaymentProvider):
         self.passkey = os.getenv("DARAJA_PASSKEY")
         self.env = os.getenv("DARAJA_ENV", "sandbox")
         
-        self.base_url = (
-            "https://sandbox.safaricom.co.ke"
-            if self.env == "sandbox"
-            else "https://api.safaricom.co.ke"
+        # P12-T1 Requirement: Base URL must be from environment variable
+        self.base_url = os.getenv(
+            "DARAJA_BASE_URL",
+            "https://sandbox.safaricom.co.ke" if self.env == "sandbox" else "https://api.safaricom.co.ke"
         )
         
         # Token Caching (P12-T1)

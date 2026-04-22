@@ -10,6 +10,8 @@
 | 6     | 2026-04-20 | 9de93c2 | Real-Time M-Pesa Feed (Africa's Talking Bridge) + Provider Abstraction. |
 | 6A2   | 2026-04-20 | 7aefc8e | Replaced AT payment layer with Intasend SDK — provider abstraction intact. |
 | 7     | 2026-04-20 | 7aefc8e | Monetisation Layer — Subscription Billing (Intasend) + Trial Management. |
+| 8     | 2026-04-21 | fa62b8a | Phase 12: Daraja C2B Integration + Multi-Provider LLM (Anthropic/OpenRouter). |
+| 9     | 2026-04-22 | fa62b8a | Phase 14: FAANG-Grade CI/CD Pipeline + P0 C2B Payload Hotfix. |
 | HF1   | 2026-04-20 | [NEW]   | P0 Critical Fixes: CF-1 (KRA Redaction), CF-2 (Tokens Harden), CF-3 (Subs Silence). |
 
 *Note: Sign-off by Chief Engineer required for each phase transition.*
