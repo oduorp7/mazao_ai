@@ -19,7 +19,7 @@ import structlog
 import asyncio
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from apps.agent import estimator
 
@@ -48,6 +48,15 @@ log = get_logger(__name__)
 # ── Global State for Rate Limiting (P8-T4) ──────────────────────────────────
 # Maps tenant_id -> list of timestamps of recent /upgrade attempts
 upgrade_rate_limit = {}
+
+# ── Constants ─────────────────────────────────────────────────────────────
+
+HOUSEHOLD_TYPE_LABELS = {
+    "basic": "Basic (No fridge)",
+    "standard": "Standard (Fridge + TV)",
+    "comfort": "Comfort (Fridge + TV + Heater)",
+    "business": "Business Premises"
+}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -78,6 +87,18 @@ async def _reply(update: Update, text: str, **kwargs) -> None:
 
 def _fmt_kes(amount: float) -> str:
     return f"{amount:,.0f}"
+
+
+def _get_htype_keyboard(current_htype: Optional[str] = None) -> InlineKeyboardMarkup:
+    """Generates inline keyboard for household type with active selection indicator."""
+    keyboard = []
+    # FAANG Grade: Progressive Disclosure UI (1 per row for mobile legibility)
+    for code, label in HOUSEHOLD_TYPE_LABELS.items():
+        prefix = "✅ " if current_htype == code else ""
+        btn = InlineKeyboardButton(f"{prefix}{label}", callback_data=f"htype_{code}")
+        keyboard.append([btn])
+    
+    return InlineKeyboardMarkup(keyboard)
 
 
 # ── /start — onboarding entry point ──────────────────────────────────────────
@@ -180,13 +201,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     log.info("callback_received", telegram_id=tid, data=data)
 
     if data == "set_htype":
-        keyboard = [
-            [InlineKeyboardButton("1. Basic (No fridge)", callback_data="htype_basic")],
-            [InlineKeyboardButton("2. Standard (Fridge + TV)", callback_data="htype_standard")],
-            [InlineKeyboardButton("3. Comfort (Fridge + TV + Heater)", callback_data="htype_comfort")],
-            [InlineKeyboardButton("4. Business Premises", callback_data="htype_business")]
-        ]
-        await query.edit_message_text("🏠 *Select your Home Type:*\n\nThis updates your electricity prediction baselines.", reply_markup=InlineKeyboardMarkup(keyboard))
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        current_htype = tenant.get("household_type")
+        reply_markup = _get_htype_keyboard(current_htype)
+        await query.edit_message_text(
+            "🏠 *Select your Home Type:*\n\nThis updates your electricity prediction baselines.", 
+            reply_markup=reply_markup
+        )
 
     elif data == "set_name":
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_settings_name"))
@@ -302,37 +323,59 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text(prompt)
 
     elif data.startswith("htype_"):
-        htype = data.replace("htype_", "")
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"household_type": htype}))
-        
-        # P15-HF2: Immediate recalculation
-        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-        token_resp = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: db.get_client().table("token_entries")
-            .select("units, purchase_date")
-            .eq("tenant_id", str(tenant["id"]))
-            .order("purchase_date", desc=True)
-            .execute()
-        )
-        readings = token_resp.data or []
-        
-        recalc_msg = ""
-        if readings:
-            units = readings[0]["units"]
-            pop_rate = estimator.get_population_baseline(htype)
-            pers_rate = estimator.calculate_weighted_personal_rate(readings)
-            daily_rate = estimator.blend_rates(pers_rate, pop_rate, len(readings))
-            if daily_rate <= 0: daily_rate = pop_rate
+        new_htype = data.replace("htype_", "")
+        try:
+            tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+            old_htype = tenant.get("household_type")
             
-            days_remaining = int(units / daily_rate)
-            depletion_date = (datetime.utcnow() + timedelta(days=days_remaining)).strftime("%d %b %Y")
-            recalc_msg = f"\n\n📉 *New Projection:*\nBased on your new Home Type, your current tokens will last approx. *{days_remaining} days* until *{depletion_date}*."
+            # WWFD: Instant non-disruptive feedback for redundant clicks
+            if str(old_htype) == str(new_htype):
+                label = HOUSEHOLD_TYPE_LABELS.get(new_htype, new_htype.capitalize())
+                await query.answer(f"Already set to {label}", show_alert=False)
+                return
 
-        await query.edit_message_text(f"✅ Home type updated to *{htype.capitalize()}*.\n\nSettings saved.{recalc_msg}", parse_mode=ParseMode.MARKDOWN)
-        
-        # Refreshes keyboard
-        await update_user_menu(context.bot, tid, tenant)
+            # Atomically update DB
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"household_type": new_htype}))
+            
+            # Enterprise Guard: Projection recalculation
+            token_resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("token_entries")
+                .select("units, purchase_date")
+                .eq("tenant_id", str(tenant["id"]))
+                .order("purchase_date", desc=True)
+                .execute()
+            )
+            readings = token_resp.data or []
+            
+            recalc_msg = ""
+            if readings:
+                units = readings[0]["units"]
+                pop_rate = estimator.get_population_baseline(new_htype)
+                pers_rate = estimator.calculate_weighted_personal_rate(readings)
+                daily_rate = estimator.blend_rates(pers_rate, pop_rate, len(readings))
+                if daily_rate <= 0: daily_rate = pop_rate
+                
+                days_remaining = int(units / daily_rate)
+                # Hygiene: standardizing on timezone-aware dates
+                depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
+                recalc_msg = f"\n\n📊 *New Projection:*\nYour current tokens will last approx. *{days_remaining} days* until *{depletion_date}*."
+
+            display_label = HOUSEHOLD_TYPE_LABELS.get(new_htype, new_htype.capitalize())
+            
+            await query.edit_message_text(
+                f"🏠 Home type updated to *{display_label}*\n{recalc_msg}", 
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            # Post-update synchronization
+            tenant["household_type"] = new_htype
+            await update_user_menu(context.bot, tid, tenant)
+            log.info("htype_updated_verified", tenant_id=tid, new_htype=new_htype)
+            
+        except Exception as e:
+            log.error("htype_callback_failed", telegram_id=tid, error=str(e))
+            await query.answer("Something went wrong updating your settings.", show_alert=True)
         return
 
     elif data.startswith("lang_"):
@@ -1048,13 +1091,12 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Check if household_type is already set in the database
     h_type = tenant.get("household_type")
     if not h_type:
-        keyboard = [
-            [InlineKeyboardButton("1. Basic (No fridge)", callback_data="htype_basic")],
-            [InlineKeyboardButton("2. Standard (Fridge + TV)", callback_data="htype_standard")],
-            [InlineKeyboardButton("3. Comfort (Fridge + TV + Heater)", callback_data="htype_comfort")],
-            [InlineKeyboardButton("4. Business Premises", callback_data="htype_business")]
-        ]
-        await _reply(update, "🏠 *Before we record your tokens, what best describes your home?*\n\nThis helps us provide accurate predictions from day one.", reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = _get_htype_keyboard()
+        await _reply(
+            update, 
+            "🏠 *Before we record your tokens, what best describes your home?*\n\nThis helps us provide accurate predictions from day one.", 
+            reply_markup=reply_markup
+        )
         return
         
     await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
@@ -1214,7 +1256,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             expiry_str = expiry_dt.strftime("%d %b %Y")
         else:
             # Calculate from days_left
-            expiry_dt = datetime.utcnow() + timedelta(days=days_left)
+            expiry_dt = datetime.now(timezone.utc) + timedelta(days=days_left)
             expiry_str = expiry_dt.strftime("%d %b %Y")
             
         report += (

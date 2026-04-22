@@ -11,6 +11,7 @@ Plans:
 """
 
 import asyncio
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from apps.tg_bot.db import get_client
