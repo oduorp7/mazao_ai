@@ -9,6 +9,8 @@ POPULATION_BASELINES = {
     "business": 8.0
 }
 
+GAS_DAILY_BASELINE = 0.2 # Population fallback for gas consumption (kg/day)
+
 CONFIDENCE_LABELS = {
     "0-1": {"label": "Grid baseline", "bar": "░░░░░"},
     "2-4": {"label": "Building", "bar": "▓▓░░░"},

@@ -459,9 +459,11 @@ GAS_RECORDED_SUCCESS = """
 🔥 *Gas Refill Recorded!*
 
 Size: {amount_kg}kg
-Date: {purchase_date}
+Daily Rate: {daily_rate}kg
+🗓️ *Est. Depletion:* {depletion_date}
+⏳ *Days Left:* {days_remaining}
 
-_I will start tracking your usage patterns as you log more refills._
+{confidence_info}
 """
 
 FULIZA_SMS_PROMPT = """

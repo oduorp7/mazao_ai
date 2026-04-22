@@ -1972,9 +1972,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            
+            # ── Gas Estimation Logic (P17-T1B) ───────────────────────────────
+            gas_resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("gas_entries")
+                .select("amount_kg, purchase_date")
+                .eq("tenant_id", str(tenant["id"]))
+                .order("purchase_date", desc=True)
+                .execute()
+            )
+            
+            # Map amount_kg -> units for estimator compatibility
+            history = [{"units": r["amount_kg"], "purchase_date": r["purchase_date"]} for r in gas_resp.data]
+            n = len(history)
+            
+            # Reuse core math: Weighted personal rate + population blend (0.2kg/day)
+            pop_rate = estimator.GAS_DAILY_BASELINE
+            pers_rate, n_valid = estimator.calculate_weighted_personal_rate(history)
+            daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
+            
+            if daily_rate <= 0:
+                daily_rate = pop_rate
+                
+            # Depletion Math (Simpler for gas: Current KG / Daily Rate)
+            import math as _math
+            days_remaining = int(_math.ceil(amount_kg / daily_rate))
+            depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
+            
+            # Confidence Label
+            conf = estimator.get_confidence_info(n)
+            conf_text = f"Confidence: {conf['bar']} {conf['label']}"
+            if n <= 1:
+                conf_text += "\n_Recording more refills will improve accuracy._"
+
             await _reply(update, M.GAS_RECORDED_SUCCESS.format(
                 amount_kg=amount_kg,
-                purchase_date=p_date.strftime("%d %b %Y")
+                daily_rate=daily_rate,
+                days_remaining=days_remaining,
+                depletion_date=depletion_date,
+                confidence_info=conf_text
             ))
         except Exception as e:
             log.error("gas_entry_failed", error=str(e))
