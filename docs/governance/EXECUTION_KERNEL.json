@@ -1,0 +1,35 @@
+{
+  "artifact_id": "MAZAO_EXECUTION_KERNEL_V1",
+  "artifact_type": "PROMPT_GOVERNANCE_KERNEL",
+  "status": "ACTIVE_MANDATORY",
+  "purpose": "Lean execution-governance wrapper for Mazao AI surgical work.",
+  "identity": {
+    "project": "Mazao AI",
+    "chief_engineer": "USER",
+    "executor": "Antigravity",
+    "execution_mode": "SURGICAL_ONLY"
+  },
+  "binding_rules": {
+    "rule_01": "No prompt may execute unless previous prompt mandate is explicitly verified as completed.",
+    "rule_02": "Every prompt must declare one objective only.",
+    "rule_03": "No file may be touched unless explicitly listed in allowed_files.",
+    "rule_05": "No new feature, no refactor, no cleanup outside stated objective.",
+    "rule_07": "If previous mandate is incomplete, executor must halt and return BLOCKER_REPORT.",
+    "rule_10": "Every prompt must reference project roles and machine-readable supervisor report requirement.",
+    "rule_12": "Every completion report must be under 120 lines and machine-readable."
+  },
+  "reporting_contract": {
+    "required_terminal_string": "return under 120 lines machine readable report for supervisors",
+    "required_report_fields": [
+      "report_type",
+      "prompt_id",
+      "status",
+      "objective",
+      "files_modified",
+      "verification_status",
+      "regression_checks",
+      "collateral_damage",
+      "ready_for_next_prompt"
+    ]
+  }
+}
