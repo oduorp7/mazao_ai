@@ -1,4 +1,4 @@
-"""
+﻿"""
 handlers.py — All Telegram command and message handlers.
 
 Each handler is a standalone async function registered in bot.py.
@@ -58,7 +58,95 @@ HOUSEHOLD_TYPE_LABELS = {
     "business": "Business Premises"
 }
 
+# P16-FIX-FINAL: KPLC Tariff Tiers — update ONLY this dict when EPRA revises rates.
+# Source: EPRA / KPLC Schedule of Tariffs 2025
+# D1 Lifeline: KES 12.23/unit, D2 Ordinary: KES 16.45/unit, D3 High: KES 19.08/unit base rates.
+# Thresholds apply to TknAmt/Units (electricity-only rate from token SMS).
+KPLC_TARIFF_TIERS = {
+    "D1": {"max_rate": 13.50, "label": "Lifeline (D1)",         "description": "Low consumption < 30 units/month"},
+    "D2": {"max_rate": 17.50, "label": "Ordinary (D2)",          "description": "Medium consumption 30–100 units/month"},
+    "D3": {"max_rate": 99.99, "label": "High Consumption (D3)",  "description": "Heavy usage > 100 units/month"},
+}
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+# ── KPLC SMS helpers (P16-FIX-FINAL) ─────────────────────────────────────────
+
+_KPLC_SMS_RE = re.compile(
+    r"Mtr[:\s]*([A-Za-z0-9]+)\s+"
+    r"Token[:\s]*([\d\-]+)\s+"
+    r"Date[:\s]*(\d{8})\s+(\d{2}:\d{2})\s+"
+    r"Units[:\s]*([\d.]+)\s+"
+    r"Amt[:\s]*([\d.]+)\s+"
+    r"TknAmt[:\s]*([\d.]+)\s+"
+    r"OtherCharges[:\s]*([\d.]+)",
+    re.IGNORECASE,
+)
+
+
+def _parse_kplc_sms(text: str) -> Optional[Dict]:
+    """Pure function. Attempts to parse a full KPLC token SMS.
+
+    Returns a structured dict on success, None on failure.
+    No side effects. Fully unit-testable.
+
+    Expected SMS format::
+        Mtr:0277100839863 Token:0967-8847-2772-1258-0314 Date:20260422 12:47
+        Units:28.3 Amt:1000.00 TknAmt:525.26 OtherCharges:474.74
+    """
+    import structlog as _structlog
+    _log = _structlog.get_logger(__name__)
+
+    m = _KPLC_SMS_RE.search(text)
+    if not m:
+        _log.debug("kplc_sms_parse_failed_using_short_form", input_length=len(text))
+        return None
+
+    try:
+        date_str, time_str = m.group(3).strip(), m.group(4).strip()
+        purchase_date = datetime.strptime(f"{date_str} {time_str}", "%Y%m%d %H:%M").date()
+    except ValueError:
+        try:
+            purchase_date = datetime.strptime(m.group(3).strip()[:8], "%Y%m%d").date()
+        except ValueError:
+            _log.warning("kplc_sms_date_parse_failed", date_raw=m.group(3))
+            return None
+
+    units = float(m.group(5))
+    amount_paid = float(m.group(6))
+    token_amount = float(m.group(7))
+    other_charges = float(m.group(8))
+
+    if units <= 0 or amount_paid <= 0 or token_amount < 0 or other_charges < 0:
+        _log.warning("kplc_sms_invalid_values", units=units, amount_paid=amount_paid)
+        return None
+
+    return {
+        "meter_number":  m.group(1).strip(),
+        "token_number":  m.group(2).strip(),
+        "purchase_date": purchase_date,
+        "units":         units,
+        "amount_paid":   amount_paid,
+        "token_amount":  token_amount,
+        "other_charges": other_charges,
+        "is_full_sms":   True,
+    }
+
+
+def _detect_tariff_tier(rate_per_unit: float) -> Dict:
+    """Pure function. Derives tariff tier dict from TknAmt/Units rate.
+
+    Iterates KPLC_TARIFF_TIERS in defined order (D1 → D2 → D3).
+    Returns the first tier where rate_per_unit <= max_rate.
+    Uses KPLC_TARIFF_TIERS constant — no inline thresholds.
+    """
+    for tier_key, tier in KPLC_TARIFF_TIERS.items():
+        if rate_per_unit <= tier["max_rate"]:
+            return {"key": tier_key, **tier}
+    # Fallback: return D3 for any rate above all thresholds
+    d3 = KPLC_TARIFF_TIERS["D3"]
+    return {"key": "D3", **d3}
+
 
 def _tg_id(update: Update) -> int:
     return update.effective_user.id
@@ -351,35 +439,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             # Atomically update DB
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"household_type": new_htype}))
-            
-            # Enterprise Guard: Projection recalculation
-            token_resp = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: db.get_client().table("token_entries")
-                .select("units, purchase_date")
-                .eq("tenant_id", str(tenant["id"]))
-                .order("purchase_date", desc=True)
-                .execute()
-            )
-            readings = token_resp.data or []
-            
-            recalc_msg = ""
-            if readings:
-                units = readings[0]["units"]
-                pop_rate = estimator.get_population_baseline(new_htype)
-                pers_rate = estimator.calculate_weighted_personal_rate(readings)
-                daily_rate = estimator.blend_rates(pers_rate, pop_rate, len(readings))
-                if daily_rate <= 0: daily_rate = pop_rate
-                
-                days_remaining = int(units / daily_rate)
-                # Hygiene: standardizing on timezone-aware dates
-                depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
-                recalc_msg = f"\n\n📊 *New Projection:*\nYour current tokens will last approx. *{days_remaining} days* until *{depletion_date}*."
 
+            # P16-FIX-02-FINAL: WWFD — no fabricated projection. Show baseline only.
+            new_baseline = estimator.get_population_baseline(new_htype)
             display_label = HOUSEHOLD_TYPE_LABELS.get(new_htype, new_htype.capitalize())
-            
+
             await query.edit_message_text(
-                f"🏠 Home type updated to *{display_label}*\n{recalc_msg}", 
+                f"☁️ Home type updated to *{display_label}*\n\n"
+                f"📊 New baseline: *{new_baseline} units/day*\n"
+                f"_Baseline updated. Your projection will be recalculated next time you record tokens via /tokens._",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("⚙️ Back to Settings", callback_data="back_to_settings")
                 ]]),
@@ -1580,52 +1648,136 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if state == "awaiting_tokens":
         try:
-            # P10-T1: Validation (Numeric check)
-            # Format: "units date [amount]" (e.g. "25.5 22/04/2026 1000")
-            parts = text.split()
-            if len(parts) < 2:
-                await _reply(update, "Please enter both units and date. Example: `25.5 22/04/2026`")
-                return
-            
-            units = float(parts[0].replace(",", ""))
-            d_str = parts[1]
-            
-            # P15-HF1: Robust date parsing using dateutil
-            try:
-                from dateutil import parser as date_parser
-                p_date = date_parser.parse(d_str, dayfirst=True).date()
-                
-                # Sanity check year
-                if p_date.year < 2000 or p_date.year > 2100:
-                    raise ValueError("invalid_year")
-            except Exception as e:
-                log.error("token_date_parse_failed", input=d_str, error=str(e))
-                await _reply(update, "❌ *Invalid Date*\nPlease use DD/MM/YYYY. Example: `22/04/2026` or `22/4/2026`")
-                return
-            
-            # P15-T1D: Optional amount paid
+
+            # ── P16-FIX-FINAL: KPLC Token SMS Parser ─────────────────────────
+            # Mode A: full KPLC SMS paste — all 7 fields extracted via pure helper
+            # Mode B: legacy short format — graceful degradation, no cost breakdown
+            parsed = _parse_kplc_sms(text)
+
+            # Fields populated by whichever mode succeeds
+            meter_number = None
+            token_number = None
+            token_amount = None
+            other_charges = None
+            tier = None
+            rate_per_unit_stored = None
+            units = None
+            p_date = None
             amount_paid = None
-            if len(parts) >= 3:
+            is_full_sms = False
+
+            if parsed:
+                # ── Mode A: Full KPLC SMS ─────────────────────────────────
+                is_full_sms = True
+                meter_number  = parsed["meter_number"]
+                token_number  = parsed["token_number"]
+                units         = parsed["units"]
+                amount_paid   = parsed["amount_paid"]
+                token_amount  = parsed["token_amount"]
+                other_charges = parsed["other_charges"]
+                p_date        = parsed["purchase_date"]
+
+                # Deduplication: block double-entry of same physical token
                 try:
-                    amount_paid = float(parts[2].replace(",", ""))
-                except ValueError:
-                    pass
+                    dup_check = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: db.get_client().table("token_entries")
+                        .select("id, purchase_date")
+                        .eq("token_number", token_number)
+                        .maybe_single()
+                        .execute()
+                    )
+                    if dup_check.data:
+                        existing_date = str(dup_check.data.get("purchase_date", "unknown"))[:10]
+                        await _reply(
+                            update,
+                            f"⚡ *Token already recorded!*\n"
+                            f"Token `{token_number}` was logged on {existing_date}.\n"
+                            f"No duplicate entry created."
+                        )
+                        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+                        return
+                except Exception as dup_exc:
+                    # Pre-migration: token_number column may not exist yet — skip dedup safely
+                    log.warning("dedup_check_skipped", error=str(dup_exc))
+
+                # Derive tariff tier using pure helper (uses KPLC_TARIFF_TIERS constant)
+                rate_per_unit_stored = round(token_amount / units, 4) if units > 0 else 0
+                tier = _detect_tariff_tier(rate_per_unit_stored)
+                log.info(
+                    "kplc_sms_parsed",
+                    meter=meter_number, units=units, amount=amount_paid,
+                    token_amount=token_amount, tariff=tier["key"],
+                    rate=round(rate_per_unit_stored, 2),
+                )
+            else:
+                # ── Mode B: Legacy short format — "units date [amount]" ───
+                parts = text.split()
+                if len(parts) < 2:
+                    await _reply(update, M.TOKEN_ENTRY_PROMPT)
+                    return
+
+                units = float(parts[0].replace(",", ""))
+                d_str = parts[1]
+
+                try:
+                    from dateutil import parser as date_parser
+                    p_date = date_parser.parse(d_str, dayfirst=True).date()
+                    if p_date.year < 2000 or p_date.year > 2100:
+                        raise ValueError("invalid_year")
+                except Exception as e:
+                    log.error("token_date_parse_failed", input=d_str, error=str(e))
+                    await _reply(update, "❌ *Invalid Date*\nPlease use DD/MM/YYYY. Example: `22/04/2026` or `22/4/2026`")
+                    return
+
+                if len(parts) >= 3:
+                    try:
+                        amount_paid = float(parts[2].replace(",", ""))
+                    except ValueError:
+                        pass
 
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+
+            # ── Store in token_entries ─────────────────────────────────────
+            insert_data = {
+                "tenant_id":     str(tenant["id"]),
+                "units":         units,
+                "purchase_date": p_date.isoformat(),
+                "amount_paid":   amount_paid,
+            }
+            # P16-FIX-FINAL: Add full SMS fields (nullable — backward compatible)
+            if is_full_sms:
+                insert_data["meter_number"]  = meter_number
+                insert_data["token_number"]  = token_number
+                insert_data["token_amount"]  = token_amount
+                insert_data["other_charges"] = other_charges
+                insert_data["tariff_tier"]   = tier["label"] if tier else None
+                insert_data["rate_per_unit"] = rate_per_unit_stored
+
+            try:
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: db.get_client().table("token_entries").insert(insert_data).execute()
+                )
+            except Exception as insert_exc:
+                # Handle missing columns gracefully (pre-migration)
+                exc_str = str(insert_exc).lower()
+                if any(col in exc_str for col in ["meter_number", "token_number", "token_amount", "other_charges", "tariff_tier"]):
+                    log.warning("new_columns_missing_fallback", error=str(insert_exc))
+                    # Retry with basic fields only
+                    await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: db.get_client().table("token_entries").insert({
+                            "tenant_id": str(tenant["id"]),
+                            "units": units,
+                            "purchase_date": p_date.isoformat(),
+                            "amount_paid": amount_paid,
+                        }).execute()
+                    )
+                else:
+                    raise insert_exc
             
-            # Store in token_entries
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: db.get_client().table("token_entries").insert({
-                    "tenant_id": str(tenant["id"]),
-                    "units": units,
-                    "purchase_date": p_date.isoformat(),
-                    "amount_paid": amount_paid
-                }).execute()
-            )
-            
-            # P15-T1B: Hybrid Projection Math
-            # Get historical readings
+            # ── Hybrid Projection Math ────────────────────────────────────
             token_resp = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: db.get_client().table("token_entries")
@@ -1637,19 +1789,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             readings = token_resp.data or []
             n = len(readings)
             
-            # Calculate rates
+            # Calculate rates — unpack tuple from updated estimator
             h_type = tenant.get("household_type", "standard")
             pop_rate = estimator.get_population_baseline(h_type)
-            pers_rate = estimator.calculate_weighted_personal_rate(readings)
-            
-            # Daily Rate calculation with safety guard
-            daily_rate = estimator.blend_rates(pers_rate, pop_rate, n)
+            pers_rate, n_valid = estimator.calculate_weighted_personal_rate(readings)
+
+            # Daily Rate — pass n_valid_intervals explicitly (P16-FIX-01-FINAL)
+            daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
             if daily_rate <= 0:
-                daily_rate = pop_rate # Fallback to population baseline
+                daily_rate = pop_rate
             
-            # Calculations
             days_remaining = int(units / daily_rate)
-            depletion_date = (datetime.utcnow() + timedelta(days=days_remaining)).strftime("%d %b %Y")
+            depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
             
             # Confidence Info
             conf = estimator.get_confidence_info(n)
@@ -1658,13 +1809,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             # Anomaly Detection
             anomaly_warning = ""
             if n >= 3 and pers_rate:
-                # Calculate rate for THIS reading if possible
                 if n >= 2:
                     d1 = datetime.fromisoformat(readings[0]["purchase_date"].replace("Z", "+00:00")).date()
                     d2 = datetime.fromisoformat(readings[1]["purchase_date"].replace("Z", "+00:00")).date()
-                    days = (d1 - d2).days
-                    if days > 0:
-                        this_rate = units / days
+                    gap_days = (d1 - d2).days
+                    if gap_days > 0:
+                        this_rate = units / gap_days
                         if estimator.detect_anomaly(this_rate, readings[1:]):
                             anomaly_warning = "\n\n⚠️ *Anomaly Detected:* This reading seems unusual compared to your history."
 
@@ -1680,44 +1830,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             elif 2 <= n <= 4: encouragement = "\n_Learning your patterns..._"
             elif 5 <= n <= 9: encouragement = "\n_High accuracy achieved._"
             
-            # Cost breakdown (P15-T1D)
+            # ── Cost Breakdown (P16-FIX-FINAL) ───────────────────────────
+            # WWFD: Only show breakdown when we have REAL TknAmt from KPLC SMS.
+            # Never estimate or approximate — if we don't know, say so.
             breakdown_text = ""
-            if amount_paid:
-                # Using 18.55 KES/unit baseline for Kenya standard tariff
-                elec_value = units * 18.55
-                if elec_value > amount_paid:
-                    elec_value = amount_paid * 0.525 # Fallback to 52.5% split
-                
-                tax_value = amount_paid - elec_value
-                elec_pct = (elec_value / amount_paid) * 100
-                tax_pct = 100 - elec_pct
-                
+            if is_full_sms and token_amount and other_charges is not None and amount_paid > 0:
+                elec_pct = round((token_amount / amount_paid) * 100, 1)
+                tax_pct  = round((other_charges / amount_paid) * 100, 1)
+                rate_display = round(token_amount / units, 2) if units > 0 else 0
+                tier_label = tier["label"] if tier else "Unknown"
+
                 breakdown_text = (
-                    f"\n\n💡 *Cost Breakdown:*\n"
-                    f"Actual electricity: KES {elec_value:,.0f} ({elec_pct:.0f}%)\n"
-                    f"Taxes and levies: KES {tax_value:,.0f} ({tax_pct:.0f}%)\n\n"
-                    f"Only {elec_pct:.0f}% of your payment was electricity."
+                    f"\n\n💡 *Cost Breakdown (from your token):*\n"
+                    f"Actual electricity: KES {token_amount:,.2f} ({elec_pct}%)\n"
+                    f"Taxes & levies:     KES {other_charges:,.2f} ({tax_pct}%)\n"
+                    f"Your rate: KES {rate_display}/unit — {tier_label}\n"
+                    f"_Levy charges vary monthly per EPRA gazette._\n\n"
+                    f"Only {elec_pct}% of your KES {amount_paid:,.0f} was electricity."
                 )
+            elif amount_paid and not is_full_sms:
+                # WWFD: honest prompt, no fabricated numbers
+                breakdown_text = "\n\n💡 _Paste the full KPLC token SMS next time for an accurate cost breakdown._"
 
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
 
             # P16-T1: AI engagement tip (safe, optional, free-tier LLM)
-            # Never blocks: returns None on any failure.
             tip_text = ""
             try:
                 from apps.agent import tips as tips_engine
                 anomaly_flag = bool(anomaly_warning)
                 if tips_engine.should_show_tip(n, anomaly_flag):
                     tip = await tips_engine.generate_tip({
-                        "units": units,
-                        "household_type": h_type,
-                        "daily_rate": daily_rate,
-                        "days_remaining": days_remaining,
-                        "entry_count": n,
-                        "amount_paid": amount_paid,
-                        "personal_rate": pers_rate,
+                        "units":           units,
+                        "household_type":  h_type,
+                        "daily_rate":      daily_rate,
+                        "days_remaining":  days_remaining,
+                        "entry_count":     n,
+                        "amount_paid":     amount_paid,
+                        "personal_rate":   pers_rate,
                         "population_rate": pop_rate,
-                        "anomaly": anomaly_flag,
+                        "anomaly":         anomaly_flag,
+                        # P16-FIX-FINAL: richer context when full SMS parsed
+                        "token_amount":    token_amount if is_full_sms else None,
+                        "other_charges":   other_charges if is_full_sms else None,
+                        "tariff_tier":     tier["label"] if (is_full_sms and tier) else None,
                     })
                     if tip:
                         tip_text = f"\n\n💡 _{tip}_"
@@ -1742,6 +1898,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         except ValueError:
             await _reply(update, M.TOKEN_INVALID_VALUE)
         return
+
 
     if state == "awaiting_fuliza":
         # P10-T1: Regex parse failure check
@@ -1945,3 +2102,4 @@ BOT_COMMANDS = [
     BotCommand("stop",          "Pause daily bot alerts"),
     BotCommand("resume",        "Resume daily bot alerts"),
 ]
+

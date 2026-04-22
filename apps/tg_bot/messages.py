@@ -396,10 +396,23 @@ Then send the file here."""
 
 TOKEN_ENTRY_PROMPT = """
 ⚡ *Electricity Token Entry*
-Please enter the number of units purchased and the date (DD/MM/YYYY).
 
-Example: `25.5 22/04/2026`
+*Option 1 (Recommended):* Paste the full KPLC token SMS:
+```
+Mtr:0277100839863
+Token:0967-8847-2772-1258-0314
+Date:20260422 12:47
+Units:28.3
+Amt:1000.00
+TknAmt:525.26
+OtherCharges:474.74
+```
+
+*Option 2 (Quick):* Enter units and date:
+`25.5 22/04/2026`
 Optional with amount: `25.5 22/04/2026 1000`
+
+_Full SMS paste gives you tariff tier detection and accurate cost breakdown._
 """
 
 TOKEN_RECORDED_SUCCESS = """
@@ -413,9 +426,11 @@ Est. Daily Rate: {daily_rate} units
 """
 
 TOKEN_COST_BREAKDOWN = """
-💡 *Cost Breakdown:*
-Actual electricity: KES {elec_amount:,.0f} ({elec_pct:.0f}%)
-Taxes & levies: KES {tax_amount:,.0f} ({tax_pct:.0f}%)
+💡 *Cost Breakdown (from your token):*
+Actual electricity: KES {elec_amount:,.2f} ({elec_pct:.0f}%)
+Taxes & levies: KES {tax_amount:,.2f} ({tax_pct:.0f}%)
+Rate: KES {rate_per_unit:.2f}/unit
+Tariff: {tariff_tier}
 """
 
 
