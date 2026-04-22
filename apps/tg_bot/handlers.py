@@ -1949,17 +1949,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
     if state == "awaiting_gas":
-        parts = text.split()
-        if len(parts) < 2:
-            await _reply(update, M.GAS_SMS_PROMPT)
+        # P17-T1B-FIX: Strict regex for <amount> <dd/mm/yyyy>
+        m = re.match(r"^\s*(\d+)\s+(\d{1,2}/\d{1,2}/\d{4})\s*$", text)
+        if not m:
+            await _reply(update, "❌ *Invalid Format*\nPlease use: `amount date` (e.g., `13 22/04/2026`)")
             return
             
         try:
-            amount_kg = float(parts[0].replace(",", ""))
-            d_str = parts[1]
+            amount_kg = float(m.group(1))
+            d_str = m.group(2)
             
-            from dateutil import parser as date_parser
-            p_date = date_parser.parse(d_str, dayfirst=True).date()
+            if amount_kg <= 0:
+                await _reply(update, "❌ *Invalid Amount*\nGas amount must be greater than zero.")
+                return
+
+            # Strict dd/mm/yyyy parsing
+            p_date = datetime.strptime(d_str, "%d/%m/%Y").date()
             
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
             await asyncio.get_event_loop().run_in_executor(
