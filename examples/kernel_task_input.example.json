@@ -1,0 +1,17 @@
+{
+  "prompt_id": "MAZAO_TASK_ID_EXAMPLE",
+  "previous_mandate_gate": {
+    "previous_prompt_id": "MAZAO_PREV_ID",
+    "previous_report_status": "COMPLETED",
+    "verified_complete": true,
+    "halt_if_not_complete": true
+  },
+  "objective": "Description of the single surgical objective.",
+  "scope_lock": {
+    "allowed_files": ["path/to/file.py"],
+    "allowed_symbols": ["function_name"],
+    "forbidden_actions": ["No feature creep"],
+    "SCHEMA_CHANGE_ALLOWED": false
+  },
+  "completion_instruction": "return under 120 lines machine readable report for supervisors"
+}
