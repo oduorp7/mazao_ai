@@ -126,11 +126,16 @@ async def generate_tip(ctx: dict[str, Any]) -> Optional[str]:
 def should_show_tip(entry_count: int, anomaly: bool) -> bool:
     """
     Engagement rate-limiter.
-    - Always show on anomaly (high-value moment).
-    - Otherwise show every 3rd entry (1st, 4th, 7th, ...).
+    - TESTING PHASE: Show every time for the first 100 entries.
+    - Always show on anomaly.
     """
     if anomaly:
         return True
     if entry_count <= 0:
         return False
+    
+    # Force show for testing quality (will revert to every 3rd later)
+    if entry_count <= 100:
+        return True
+        
     return (entry_count - 1) % 3 == 0
