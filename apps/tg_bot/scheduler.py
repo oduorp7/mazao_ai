@@ -318,6 +318,10 @@ async def job_trial_alerts(bot: Bot) -> None:
         
         delta = (ends - now_tz).days
         tid = tenant["telegram_id"]
+        
+        # P15-T1: Superadmin skip alerts
+        if os.getenv("ADMIN_TELEGRAM_ID") and str(tid) == str(os.getenv("ADMIN_TELEGRAM_ID")):
+            continue
 
         try:
             if delta == 3:
@@ -564,6 +568,11 @@ async def job_subscription_renewal_alerts(bot: Bot):
     
     for t in tenants:
         tid = t["telegram_id"]
+        
+        # P15-T1: Superadmin skip alerts
+        if os.getenv("ADMIN_TELEGRAM_ID") and str(tid) == str(os.getenv("ADMIN_TELEGRAM_ID")):
+            continue
+            
         expires_at_str = t.get("subscription_expires_at")
         if not expires_at_str:
             continue

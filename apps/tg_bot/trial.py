@@ -96,6 +96,12 @@ async def is_feature_allowed(tenant_id: str, feature: str) -> bool:
     - 'ai_insights': biashara only
     - 'compliance_alerts': always True (even for expired free)
     """
+    # P15-T1: Superadmin bypass — Chief Engineer never gated
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+    if admin_id and str(tenant_id) == str(admin_id):
+        log.info("superadmin_gate_bypass", tenant_id=tenant_id, feature=feature)
+        return True
+
     if feature == "compliance_alerts":
         return True
 

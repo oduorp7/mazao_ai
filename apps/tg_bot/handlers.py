@@ -304,9 +304,35 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif data.startswith("htype_"):
         htype = data.replace("htype_", "")
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"household_type": htype}))
-        await query.edit_message_text(f"✅ Home type set to *{htype.capitalize()}*.\n\nNow, let's record your tokens.", parse_mode=ParseMode.MARKDOWN)
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
-        await context.bot.send_message(chat_id=tid, text=M.TOKEN_ENTRY_PROMPT, parse_mode=ParseMode.MARKDOWN)
+        
+        # P15-HF2: Immediate recalculation
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        token_resp = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: db.get_client().table("token_entries")
+            .select("units, purchase_date")
+            .eq("tenant_id", str(tenant["id"]))
+            .order("purchase_date", desc=True)
+            .execute()
+        )
+        readings = token_resp.data or []
+        
+        recalc_msg = ""
+        if readings:
+            units = readings[0]["units"]
+            pop_rate = estimator.get_population_baseline(htype)
+            pers_rate = estimator.calculate_weighted_personal_rate(readings)
+            daily_rate = estimator.blend_rates(pers_rate, pop_rate, len(readings))
+            if daily_rate <= 0: daily_rate = pop_rate
+            
+            days_remaining = int(units / daily_rate)
+            depletion_date = (datetime.utcnow() + timedelta(days=days_remaining)).strftime("%d %b %Y")
+            recalc_msg = f"\n\n📉 *New Projection:*\nBased on your new Home Type, your current tokens will last approx. *{days_remaining} days* until *{depletion_date}*."
+
+        await query.edit_message_text(f"✅ Home type updated to *{htype.capitalize()}*.\n\nSettings saved.{recalc_msg}", parse_mode=ParseMode.MARKDOWN)
+        
+        # Refreshes keyboard
+        await update_user_menu(context.bot, tid, tenant)
         return
 
     elif data.startswith("lang_"):
@@ -1166,10 +1192,17 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
     # ── 3. Plan Section ────────────────────────────────────────────────────
-    plan = tenant.get("plan", "trial").upper()
-    status = tenant.get("status", "active").title()
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+    is_superadmin = admin_id and str(tid) == str(admin_id)
     
-    if tenant.get("plan") == "trial":
+    if is_superadmin:
+        plan = "Super Admin"
+        status = "Active"
+    else:
+        plan = tenant.get("plan", "trial").upper()
+        status = tenant.get("status", "active").title()
+    
+    if plan == "TRIAL":
         days_left = tenant.get("trial_days_left", 0)
         # Fallback for trial_ends_at schema inconsistency
         expiry = tenant.get("trial_ends_at")
@@ -1286,9 +1319,15 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     # 1. Total Tenants & Onboarding Stats (P10-T2)
     tenants_resp = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: client.table("tenants").select("plan, status, onboarding_completed").execute()
+        None, lambda: client.table("tenants").select("*").execute()
     )
-    tenants = tenants_resp.data or []
+    all_tenants = tenants_resp.data or []
+    
+    # P15-T1: SUPERADMIN_EXCLUDED — Exclude Chief Engineer from metrics
+    tenants = [t for t in all_tenants if str(t.get("telegram_id")) != str(admin_id)]
+    admin_tenant = next((t for t in all_tenants if str(t.get("telegram_id")) == str(admin_id)), None)
+    admin_uuid = admin_tenant["id"] if admin_tenant else None
+    
     total = len(tenants)
     onboarded_count = sum(1 for t in tenants if t.get("onboarding_completed"))
     completion_rate = (onboarded_count / total * 100) if total > 0 else 0
@@ -1309,9 +1348,13 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # 4. Monthly Revenue
     this_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     rev_resp = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: client.table("payment_requests").select("amount").eq("status", "confirmed").gte("confirmed_at", this_month).execute()
+        None, lambda: client.table("payment_requests").select("amount, tenant_id").eq("status", "confirmed").gte("confirmed_at", this_month).execute()
     )
-    rev_data = rev_resp.data or []
+    all_rev_data = rev_resp.data or []
+    
+    # P15-T1: SUPERADMIN_EXCLUDED — Exclude test payments from Chief Engineer
+    rev_data = [r for r in all_rev_data if str(r.get("tenant_id")) != str(admin_uuid)]
+    
     revenue = sum(float(r["amount"]) for r in rev_data)
     payments_count = len(rev_data)
     
@@ -1487,18 +1530,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             units = float(parts[0].replace(",", ""))
             d_str = parts[1]
             
-            # P15-HF1: Robust date parsing for DD/MM/YYYY or DD/M/YYYY
+            # P15-HF1: Robust date parsing using dateutil
             try:
-                p_date = datetime.strptime(d_str, "%d/%m/%Y").date()
-            except ValueError:
-                try:
-                    # Try single digit month/day if primary fails
-                    p_date = datetime.strptime(d_str, "%d/%m/%y").date() # Handle 2-digit year just in case
-                except ValueError:
-                    # Final fallback to dateutil or manual split for extreme flexibility
-                    day, month, year = d_str.split("/")
-                    if len(year) == 2: year = f"20{year}"
-                    p_date = datetime(int(year), int(month), int(day)).date()
+                from dateutil import parser as date_parser
+                p_date = date_parser.parse(d_str, dayfirst=True).date()
+                
+                # Sanity check year
+                if p_date.year < 2000 or p_date.year > 2100:
+                    raise ValueError("invalid_year")
+            except Exception as e:
+                log.error("token_date_parse_failed", input=d_str, error=str(e))
+                await _reply(update, "❌ *Invalid Date*\nPlease use DD/MM/YYYY. Example: `22/04/2026` or `22/4/2026`")
+                return
             
             # P15-T1D: Optional amount paid
             amount_paid = None
@@ -1539,8 +1582,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             pop_rate = estimator.get_population_baseline(h_type)
             pers_rate = estimator.calculate_weighted_personal_rate(readings)
             
-            # Blended Daily Rate
+            # Daily Rate calculation with safety guard
             daily_rate = estimator.blend_rates(pers_rate, pop_rate, n)
+            if daily_rate <= 0:
+                daily_rate = pop_rate # Fallback to population baseline
             
             # Calculations
             days_remaining = int(units / daily_rate)
