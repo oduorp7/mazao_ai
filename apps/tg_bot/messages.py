@@ -398,8 +398,26 @@ TOKEN_ENTRY_PROMPT = """
 ⚡ *Electricity Token Entry*
 Please enter the number of units purchased and the date (DD/MM/YYYY).
 
-Example: `25.5 20/04/2026`
+Example: `25.5 22/04/2026`
+Optional with amount: `25.5 22/04/2026 1000`
 """
+
+TOKEN_RECORDED_SUCCESS = """
+⚡ *Token Recorded!*
+
+Units: {units}
+Est. Daily Rate: {daily_rate} units
+🗓️ *Depletion Date:* {depletion_date}
+⏳ *Days left:* {days_remaining}
+{breakdown}
+"""
+
+TOKEN_COST_BREAKDOWN = """
+💡 *Cost Breakdown:*
+Actual electricity: KES {elec_amount:,.0f} ({elec_pct:.0f}%)
+Taxes & levies: KES {tax_amount:,.0f} ({tax_pct:.0f}%)
+"""
+
 
 TOKEN_DEPLETION_ALERT = """
 ⚠️ *Electricity Token Alert*

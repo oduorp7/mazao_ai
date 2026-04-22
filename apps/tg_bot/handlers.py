@@ -1444,16 +1444,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if state == "awaiting_tokens":
         try:
             # P10-T1: Validation (Numeric check)
-            # Format: "units date" (e.g. "25.5 20/04/2026")
+            # Format: "units date [amount]" (e.g. "25.5 20/04/2026 1000")
             parts = text.split()
             if len(parts) < 2:
-                await _reply(update, "Please enter both units and date. Example: `25.5 20/04/2026`")
+                await _reply(update, "Please enter both units and date. Example: `25.5 22/04/2026`")
                 return
             
             units = float(parts[0].replace(",", ""))
             d_str = parts[1]
             p_date = datetime.strptime(d_str, "%d/%m/%Y").date()
             
+            # P15-T1B: Optional amount paid
+            amount_paid = None
+            if len(parts) >= 3:
+                try:
+                    amount_paid = float(parts[2].replace(",", ""))
+                except ValueError:
+                    pass
+
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
             
             # Store in token_entries
@@ -1462,17 +1470,71 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 lambda: db.get_client().table("token_entries").insert({
                     "tenant_id": str(tenant["id"]),
                     "units": units,
-                    "purchase_date": p_date.isoformat()
+                    "purchase_date": p_date.isoformat(),
+                    "amount_paid": amount_paid
                 }).execute()
             )
             
-            # P4-T1: Projection math (Default fallback)
-            daily_rate = 6.0 
+            # P15-T1A: Projection math with improved default
+            # Get previous entries to calculate real daily rate
+            token_resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("token_entries")
+                .select("units, purchase_date")
+                .eq("tenant_id", str(tenant["id"]))
+                .order("purchase_date", desc=True)
+                .limit(5)
+                .execute()
+            )
+            
+            daily_rate = 1.5 # P15-T1A: New default for Kenyan households
+            
+            if token_resp.data and len(token_resp.data) >= 2:
+                # Calculate from last 2 entries
+                e1 = token_resp.data[0]
+                e2 = token_resp.data[1]
+                d1 = datetime.fromisoformat(e1["purchase_date"]).date()
+                d2 = datetime.fromisoformat(e2["purchase_date"]).date()
+                days = (d1 - d2).days
+                if days > 0:
+                    # Rate = units of e2 consumed between d2 and d1
+                    daily_rate = round(float(e2["units"]) / days, 2)
+                    # Safety bounds for rate
+                    daily_rate = max(min(daily_rate, 15.0), 0.5)
+
             days_remaining = int(units / daily_rate)
             depletion_date = (datetime.utcnow() + timedelta(days=days_remaining)).strftime("%d %b %Y")
             
+            # P15-T1B: Cost breakdown calculation
+            breakdown_text = ""
+            if amount_paid:
+                # Kenyan Token logic approx (Tax/Levies ~45-50% on low/mid tier)
+                # For 1000 KES, ~525 is actual electricity value (units * ~18.5)
+                # This is an estimate for UI feedback
+                elec_value = units * 18.55 # Average base rate
+                if elec_value > amount_paid: 
+                    elec_value = amount_paid * 0.525 # Fallback to 52.5% split
+                
+                tax_value = amount_paid - elec_value
+                elec_pct = (elec_value / amount_paid) * 100
+                tax_pct = 100 - elec_pct
+                
+                breakdown_text = M.TOKEN_COST_BREAKDOWN.format(
+                    elec_amount=elec_value,
+                    elec_pct=elec_pct,
+                    tax_amount=tax_value,
+                    tax_pct=tax_pct
+                )
+
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-            await _reply(update, f"⚡ *Token Recorded!*\n\nUnits: {units}\nEst. Daily Rate: {daily_rate} units\n\n🗓️ *Depletion Date:* {depletion_date}\n⏳ *Days left:* {days_remaining}")
+            
+            await _reply(update, M.TOKEN_RECORDED_SUCCESS.format(
+                units=units,
+                daily_rate=daily_rate,
+                depletion_date=depletion_date,
+                days_remaining=days_remaining,
+                breakdown=breakdown_text
+            ))
         except ValueError:
             await _reply(update, M.TOKEN_INVALID_VALUE)
         return

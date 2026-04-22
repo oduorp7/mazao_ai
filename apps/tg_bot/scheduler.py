@@ -368,10 +368,10 @@ async def job_token_alerts(bot: Bot) -> None:
             units = float(entry["units"])
             
             # Default rate logic from P4-T1
-            daily_rate = 6.0
+            daily_rate = 1.5 # P15-T1A: New default for Kenyan households
             h_size = tenant.get("household_size", 4)
-            if h_size <= 2: daily_rate = 3.0
-            elif h_size >= 6: daily_rate = 10.0
+            if h_size <= 2: daily_rate = 1.0
+            elif h_size >= 6: daily_rate = 3.0
             
             days_passed = (today - datetime.fromisoformat(entry["purchase_date"]).date()).days
             units_remaining = max(units - (days_passed * daily_rate), 0)
