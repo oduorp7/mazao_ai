@@ -110,6 +110,72 @@
         "source_label_contains": "Kenya grid baseline",
         "reminder_expected": false
       }
+    },
+    {
+      "scenario_id": "ELEC_CONFIDENCE_GATING_SUPPRESSED",
+      "family": "Confidence Gating",
+      "household_type": "standard",
+      "events": [
+        {"units": 7.5, "purchase_date": "2026-04-23T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 3,
+        "days_left_max": 3,
+        "confidence_label": "Grid baseline",
+        "source_label_contains": "Kenya grid baseline",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "ELEC_DEDUP_3DAY_SUPPRESSED",
+      "family": "Deduplication",
+      "household_type": "standard",
+      "alert_3d_sent": true,
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-08T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2026-04-21T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 3,
+        "days_left_max": 3,
+        "confidence_label": "Building",
+        "source_label_contains": "early personal estimate",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "ELEC_BACKFILL_LEARNING",
+      "family": "Chronological Backfill",
+      "household_type": "standard",
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-23T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2026-04-10T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2023-01-01T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 6,
+        "days_left_max": 7,
+        "confidence_label": "Building",
+        "source_label_contains": "early personal estimate",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "ELEC_BACKFILL_RECENCY_PROTECTION",
+      "family": "Chronological Backfill",
+      "household_type": "standard",
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-23T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2026-04-22T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2023-01-01T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 3,
+        "days_left_max": 4,
+        "confidence_label": "Building",
+        "source_label_contains": "early personal estimate",
+        "reminder_expected": true
+      }
     }
   ]
 }

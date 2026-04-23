@@ -70,6 +70,15 @@ Mazao AI implements a unified, stateful alerting system for Electricity (Tokens)
 2.  **Durable State**: 7-day and 3-day alerts are recorded in the database and will not refire until a new refill row is detected.
 3.  **Critical Urgency**: 1-day alerts bypass deduplication and fire daily until a refill is logged.
 
+### 📅 Backfill & Historical Learning
+
+Mazao AI supports backfilling historical utility data (past token purchases or gas refills) to accelerate model learning without destabilizing current predictions.
+
+- **Chronological Stability**: The system automatically re-sorts historical entries by date, allowing users to add data out of order.
+- **Recency Weighting**: Newer intervals carry significantly more weight than older ones. Current forecasts are always anchored to the user's most recent behavior.
+- **Improved Confidence**: Adding historical data increases the sample size (`n`), allowing the system to graduate from "Grid baseline" to high-accuracy "Personal Average" faster.
+- **Alert Anchoring**: Proactive alerts are always calculated relative to the most recent entry in time. Backfilled data improves the *rate* but does not trigger "phantom" historical reminders.
+
 ---
 
 ## 📡 M-Pesa Daraja C2B Integration (Sprint 5)
