@@ -5,13 +5,14 @@
       "family": "Baseline Only",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T08:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:21:26Z"}
       ],
       "expected": {
         "days_left_min": 51,
         "days_left_max": 53,
         "confidence_label": "Grid baseline",
-        "source_label_contains": "Population baseline"
+        "source_label_contains": "Population baseline",
+        "reminder_expected": false
       }
     },
     {
@@ -19,14 +20,15 @@
       "family": "Growth",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-01T08:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-20T08:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "2026-04-04T10:20:07Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:20:07Z"}
       ],
       "expected": {
-        "days_left_min": 37,
-        "days_left_max": 41,
+        "days_left_min": 41,
+        "days_left_max": 43,
         "confidence_label": "Building",
-        "source_label_contains": "refill history"
+        "source_label_contains": "refill history",
+        "reminder_expected": false
       }
     },
     {
@@ -34,14 +36,64 @@
       "family": "Same-Day Stacking",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 6.0, "purchase_date": "2026-04-23T08:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:00:00Z"}
+        {"amount_kg": 6.0, "purchase_date": "2026-04-23T10:21:26Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:21:26Z"}
       ],
       "expected": {
         "days_left_min": 75,
         "days_left_max": 77,
         "confidence_label": "Building",
-        "source_label_contains": "refill history"
+        "source_label_contains": "refill history",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "GAS_NOISE_SUB_24H",
+      "family": "Outlier/Noise",
+      "household_type": "standard",
+      "events": [
+        {"amount_kg": 13.0, "purchase_date": "2026-04-02T10:20:07Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-04-21T10:20:07Z"},
+        {"amount_kg": 1.0, "purchase_date": "2026-04-21T20:20:07Z"}
+      ],
+      "expected": {
+        "days_left_min": 44,
+        "days_left_max": 46,
+        "confidence_label": "Building",
+        "source_label_contains": "refill history",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "GAS_FALLBACK_UNKNOWN",
+      "family": "Household Type Fallbacks",
+      "household_type": "alien_household",
+      "events": [
+        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:21:26Z"}
+      ],
+      "expected": {
+        "days_left_min": 51,
+        "days_left_max": 53,
+        "confidence_label": "Grid baseline",
+        "source_label_contains": "Population baseline",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "GAS_REMINDER_3DAY",
+      "family": "Reminder Thresholds",
+      "household_type": "standard",
+      "events": [
+        {"amount_kg": 13.0, "purchase_date": "2026-04-05T10:20:34Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-04-14T10:20:34Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:20:34Z"}
+      ],
+      "expected": {
+        "days_left_min": 19,
+        "days_left_max": 23,
+        "confidence_label": "Building",
+        "source_label_contains": "refill history",
+        "reminder_expected": false
       }
     }
   ]
