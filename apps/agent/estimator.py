@@ -1,5 +1,5 @@
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 
 POPULATION_BASELINES = {
@@ -43,6 +43,66 @@ def get_gas_population_baseline(household_type: str) -> float:
     if not household_type:
         return GAS_POPULATION_BASELINES["standard"]
     return GAS_POPULATION_BASELINES.get(household_type.lower(), GAS_POPULATION_BASELINES["standard"])
+
+def get_gas_projection_state(history: List[Dict], h_type: str, refill_kg: float = 0) -> Dict:
+    """Calculates burn rate and depletion projection for gas.
+    
+    If refill_kg > 0, it assumes a refill was just performed today.
+    Otherwise, it calculates remaining days based on the latest historical entry.
+    """
+    import math as _math
+    n = len(history)
+    
+    # Baseline & Personal Rate
+    pop_rate = get_gas_population_baseline(h_type)
+    pers_rate, n_valid = calculate_weighted_personal_rate(history)
+    daily_rate = blend_rates(pers_rate, pop_rate, n, n_valid)
+    if daily_rate <= 0: daily_rate = pop_rate
+    
+    # Calculate Days Remaining
+    now = datetime.now() # Caller should handle timezones if needed, but relative days are stable
+    
+    if refill_kg > 0:
+        # Scenario A: Just refilled today
+        days_rem = int(_math.ceil(refill_kg / daily_rate))
+    elif n > 0:
+        # Scenario B: Standing status from history
+        # P17-T1F: Stack same-day inventory to handle top-ups/multi-cylinder refills
+        latest = history[0]
+        l_date = datetime.fromisoformat(latest["purchase_date"].replace("Z", "+00:00"))
+        
+        # Aggregate all units purchased on the SAME date as the latest entry
+        l_date_only = l_date.date()
+        stacked_units = 0
+        for entry in history:
+            e_date = datetime.fromisoformat(entry["purchase_date"].replace("Z", "+00:00")).date()
+            if e_date == l_date_only:
+                stacked_units += entry["units"]
+            else:
+                break # History is sorted desc
+        
+        # Strip timezone for delta if needed or ensure alignment
+        if l_date.tzinfo:
+            now_aware = datetime.now(l_date.tzinfo)
+            days_since = (now_aware - l_date).days
+        else:
+            days_since = (datetime.now() - l_date).days
+            
+        total_days = stacked_units / daily_rate
+        days_rem = int(_math.ceil(total_days - days_since))
+    else:
+        # Scenario C: No data
+        return {"n": 0, "daily_rate": pop_rate, "days_remaining": 0, "depletion_date": "N/A", "confidence": CONFIDENCE_LABELS["0-1"]}
+
+    depletion_date = (datetime.now() + timedelta(days=max(0, days_rem))).strftime("%d %b %Y")
+    
+    return {
+        "n": n,
+        "daily_rate": daily_rate,
+        "days_remaining": days_rem,
+        "depletion_date": depletion_date,
+        "confidence": get_confidence_info(n)
+    }
 
 def calculate_weighted_personal_rate(readings: List[Dict]) -> Tuple[Optional[float], int]:
     """Calculates weighted average from actual purchase history.
