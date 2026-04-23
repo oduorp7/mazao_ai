@@ -1,0 +1,48 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "GAS_BASELINE_STANDARD",
+      "family": "Baseline Only",
+      "household_type": "standard",
+      "events": [
+        {"amount_kg": 13.0, "purchase_date": "2026-04-23T08:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 51,
+        "days_left_max": 53,
+        "confidence_label": "Grid baseline",
+        "source_label_contains": "Population baseline"
+      }
+    },
+    {
+      "scenario_id": "GAS_GROWTH_STANDARD",
+      "family": "Growth",
+      "household_type": "standard",
+      "events": [
+        {"amount_kg": 13.0, "purchase_date": "2026-04-01T08:00:00Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-04-20T08:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 37,
+        "days_left_max": 41,
+        "confidence_label": "Building",
+        "source_label_contains": "refill history"
+      }
+    },
+    {
+      "scenario_id": "GAS_STACKING_TOPUP",
+      "family": "Same-Day Stacking",
+      "household_type": "standard",
+      "events": [
+        {"amount_kg": 6.0, "purchase_date": "2026-04-23T08:00:00Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 75,
+        "days_left_max": 77,
+        "confidence_label": "Building",
+        "source_label_contains": "refill history"
+      }
+    }
+  ]
+}
