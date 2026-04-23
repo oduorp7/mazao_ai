@@ -298,6 +298,39 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     log.info("callback_received", telegram_id=tid, data=data)
 
+    if data == "tokens_add_new":
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
+        await query.edit_message_text(M.TOKEN_ENTRY_PROMPT)
+        return
+
+    elif data == "tokens_change_htype":
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        current_htype = tenant.get("household_type")
+        keyboard = []
+        for code, label in HOUSEHOLD_TYPE_LABELS.items():
+            prefix = "✅ " if current_htype == code else ""
+            btn = InlineKeyboardButton(f"{prefix}{label}", callback_data=f"t_htype_{code}")
+            keyboard.append([btn])
+        keyboard.append([InlineKeyboardButton("⬅️ Back to Status", callback_data="tokens_back_to_status")])
+        
+        await query.edit_message_text(
+            "🏠 *Select your Home Type:*\n\nThis updates your electricity prediction baselines.", 
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    elif data.startswith("t_htype_"):
+        new_htype = data.replace("t_htype_", "")
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"household_type": new_htype}))
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await _render_tokens_status(query, tid, tenant)
+        return
+
+    elif data == "tokens_back_to_status":
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await _render_tokens_status(query, tid, tenant)
+        return
+
     if data == "set_htype":
         tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
         current_htype = tenant.get("household_type")
@@ -683,7 +716,7 @@ async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Displays the upcoming obligations for an individual user."""
     tid = _tg_id(update)
-    tenant = db.get_tenant(tid)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
     
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
@@ -724,6 +757,23 @@ async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     import re
     text = re.sub(r'\b[A-P]\d{9}[A-Z]\b', '[REDACTED]', text)
     
+    # P18-T4: Electricity summary
+    try:
+        tenant_data = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        proj = await _get_electricity_projection(tid, tenant_data)
+        
+        text += "\n"
+        if proj["n"] > 0:
+            text += M.MYSTATUS_ELECTRICITY_ROW.format(
+                daily_rate=proj["daily_rate"],
+                depletion_date=proj["depletion_date"],
+                days_left=proj["days_remaining"]
+            )
+        else:
+            text += M.MYSTATUS_ELECTRICITY_EMPTY
+    except Exception as e:
+        log.warning("mystatus_electricity_failed", error=str(e))
+
     await _reply(update, text)
 
 
@@ -1161,6 +1211,91 @@ async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ── /tokens (P4-T1) ─────────────────────────────────────────────────────────
 
+async def _get_electricity_projection(tid: int, tenant: Dict) -> Dict:
+    """P18-T1: Unified projection logic for electricity."""
+    import math as _math
+    
+    resp = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: db.get_client().table("token_entries")
+        .select("units, purchase_date")
+        .eq("tenant_id", str(tenant["id"]))
+        .order("purchase_date", desc=True)
+        .execute()
+    )
+    
+    history = resp.data or []
+    n = len(history)
+    
+    h_type = tenant.get("household_type", "standard")
+    pop_rate = estimator.get_population_baseline(h_type)
+    pers_rate, n_valid = estimator.calculate_weighted_personal_rate(history)
+    daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
+    if daily_rate <= 0: daily_rate = pop_rate
+    
+    now = datetime.now(timezone.utc)
+    
+    if n > 0:
+        latest = history[0]
+        l_date = datetime.fromisoformat(latest["purchase_date"].replace("Z", "+00:00"))
+        if l_date.tzinfo is None: l_date = l_date.replace(tzinfo=timezone.utc)
+        
+        days_since = (now - l_date).days
+        # Units remaining = units - (rate * days_since)
+        units_remaining = max(0, latest["units"] - (daily_rate * days_since))
+        days_rem = int(_math.ceil(units_remaining / daily_rate))
+        depletion_date = (now + timedelta(days=max(0, days_rem))).strftime("%d %b %Y")
+        
+        return {
+            "n": n,
+            "daily_rate": daily_rate,
+            "units_remaining": units_remaining,
+            "days_remaining": days_rem,
+            "depletion_date": depletion_date,
+            "n_valid": n_valid
+        }
+    else:
+        return {"n": 0, "daily_rate": pop_rate, "units_remaining": 0, "days_remaining": 0, "depletion_date": "N/A", "n_valid": 0}
+
+
+async def _render_tokens_status(query_or_update: Update | CallbackQuery, tid: int, tenant: Dict) -> None:
+    """Renders the status card for electricity tokens."""
+    proj = await _get_electricity_projection(tid, tenant)
+    h_type = tenant.get("household_type", "standard")
+    
+    src_label = estimator.get_source_label(proj["n"], h_type)
+    conf = estimator.get_confidence_info(proj["n"])
+    
+    # Encouragement
+    encouragement = ""
+    if proj["n"] == 1: encouragement = "Recording more tokens will improve accuracy."
+    elif 2 <= proj["n"] <= 4: encouragement = "Learning your patterns..."
+    elif proj["n"] >= 5: encouragement = "High accuracy achieved."
+
+    keyboard = [
+        [InlineKeyboardButton("➕ Log New Token", callback_data="tokens_add_new")],
+        [InlineKeyboardButton("🏠 Change Home Type", callback_data="tokens_change_htype")]
+    ]
+    
+    text = M.TOKENS_STATUS_CARD.format(
+        units_remaining=proj["units_remaining"],
+        daily_rate=proj["daily_rate"],
+        source_label=src_label,
+        depletion_date=proj["depletion_date"],
+        days_left=proj["days_remaining"],
+        bar=conf["bar"],
+        label=conf["label"],
+        encouragement=encouragement
+    )
+
+    if hasattr(query_or_update, "edit_message_text"):
+        # Callback query
+        await query_or_update.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
+    else:
+        # Update (command)
+        await _reply(query_or_update, text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
 async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tid = _tg_id(update)
     tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
@@ -1174,7 +1309,6 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     # P15-T1A: Household type capture (Once per user)
-    # Check if household_type is already set in the database
     h_type = tenant.get("household_type")
     if not h_type:
         reply_markup = _get_htype_keyboard()
@@ -1185,8 +1319,15 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         return
         
-    await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
-    await _reply(update, M.TOKEN_ENTRY_PROMPT)
+    # P18-T1: Show status card first if entries exist
+    proj = await _get_electricity_projection(tid, tenant)
+    
+    if proj["n"] > 0:
+        await _render_tokens_status(update, tid, tenant)
+    else:
+        # Zero entries: go straight to prompt as current
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
+        await _reply(update, M.TOKEN_ENTRY_PROMPT)
 
 
 # ── Gas Helpers (P17-T1D) ──────────────────────────────────────────────────
@@ -1872,16 +2013,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             except Exception as insert_exc:
                 # Handle missing columns gracefully (pre-migration)
                 exc_str = str(insert_exc).lower()
-                if any(col in exc_str for col in ["meter_number", "token_number", "token_amount", "other_charges", "tariff_tier"]):
+                # P17-T2H: Harden guard to include all optional columns that might be missing in live DB
+                if any(col in exc_str for col in ["meter_number", "token_number", "token_amount", "other_charges", "tariff_tier", "rate_per_unit", "amount_paid"]):
                     log.warning("new_columns_missing_fallback", error=str(insert_exc))
-                    # Retry with basic fields only
+                    # Retry with basic fields only (guaranteed by schema.sql)
                     await asyncio.get_event_loop().run_in_executor(
                         None,
                         lambda: db.get_client().table("token_entries").insert({
                             "tenant_id": str(tenant["id"]),
                             "units": units,
                             "purchase_date": p_date.isoformat(),
-                            "amount_paid": amount_paid,
                         }).execute()
                     )
                 else:
@@ -1967,26 +2108,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             elif 5 <= n <= 9: encouragement = "\n_High accuracy achieved._"
             
             # ── Cost Breakdown (P16-FIX-FINAL) ───────────────────────────
-            # WWFD: Only show breakdown when we have REAL TknAmt from KPLC SMS.
-            # Never estimate or approximate — if we don't know, say so.
+            # P17-T1-FIX: Centralize cost breakdown in estimator with 52.5% D1 ratio.
             breakdown_text = ""
-            if is_full_sms and token_amount and other_charges is not None and amount_paid > 0:
-                elec_pct = round((token_amount / amount_paid) * 100, 1)
-                tax_pct  = round((other_charges / amount_paid) * 100, 1)
-                rate_display = round(token_amount / units, 2) if units > 0 else 0
-                tier_label = tier["label"] if tier else "Unknown"
+            if amount_paid and amount_paid > 0:
+                t_key = tier["key"] if (is_full_sms and tier) else "D1"
+                bd = estimator.get_cost_breakdown(amount_paid, tariff=t_key, actual_tkn=token_amount if is_full_sms else None)
+                
+                elec_pct = bd["percentage"]
+                rate_display = round(bd["electricity"] / units, 2) if units > 0 else 0
+                tier_label = tier["label"] if (is_full_sms and tier) else "D1 Lifeline (Estimated)"
 
                 breakdown_text = (
-                    f"\n\n💡 *Cost Breakdown (from your token):*\n"
-                    f"Actual electricity: KES {token_amount:,.2f} ({elec_pct}%)\n"
-                    f"Taxes & levies:     KES {other_charges:,.2f} ({tax_pct}%)\n"
+                    f"\n\n💡 *Cost Breakdown{' (from your token)' if is_full_sms else ''}:*\n"
+                    f"Actual electricity: KES {bd['electricity']:,.2f} ({elec_pct}%)\n"
+                    f"Taxes & levies:     KES {bd['taxes']:,.2f} ({round(100-elec_pct, 1)}%)\n"
                     f"Your rate: KES {rate_display}/unit — {tier_label}\n"
                     f"_Levy charges vary monthly per EPRA gazette._\n\n"
                     f"Only {elec_pct}% of your KES {amount_paid:,.0f} was electricity."
                 )
-            elif amount_paid and not is_full_sms:
-                # WWFD: honest prompt, no fabricated numbers
-                breakdown_text = "\n\n💡 _Paste the full KPLC token SMS next time for an accurate cost breakdown._"
+                if not is_full_sms:
+                    breakdown_text += "\n\n💡 _Paste the full KPLC token SMS next time for a more accurate breakdown._"
 
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
 
