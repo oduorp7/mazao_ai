@@ -56,6 +56,22 @@ Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technic
 | `/resume` | Resume daily alerts | Any | Any |
 | `/admin` | Admin Dashboard | Admin | N/A |
 
+## 📡 Utility Alert Lifecycle
+
+Mazao AI implements a unified, stateful alerting system for Electricity (Tokens) and Gas depletion to prevent notification fatigue while ensuring critical urgency.
+
+| Utility | Thresholds | Lifecycle | Dedup Logic |
+|---------|------------|-----------|-------------|
+| **Electricity** | 7d, 3d, 1d | Proactive | 7d/3d: Once per refill; 1d: Daily repeat |
+| **Gas** | 7d, 3d, 1d | Proactive | 7d/3d: Once per refill; 1d: Daily repeat |
+
+**Rules of Engagement:**
+1.  **Confidence Gating**: Proactive alerts are suppressed if confidence is "Grid baseline" (0-1 history entries) to avoid low-accuracy noise.
+2.  **Durable State**: 7-day and 3-day alerts are recorded in the database and will not refire until a new refill row is detected.
+3.  **Critical Urgency**: 1-day alerts bypass deduplication and fire daily until a refill is logged.
+
+---
+
 ## 📡 M-Pesa Daraja C2B Integration (Sprint 5)
 
 Mazao AI now supports native Safaricom Daraja C2B integration for real-time transaction monitoring.
