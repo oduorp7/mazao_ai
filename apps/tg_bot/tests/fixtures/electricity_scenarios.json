@@ -1,0 +1,115 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "ELEC_BASELINE_STANDARD",
+      "family": "Baseline Only",
+      "household_type": "standard",
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-23T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 5,
+        "days_left_max": 5,
+        "confidence_label": "Grid baseline",
+        "source_label_contains": "Kenya grid baseline",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "ELEC_GROWTH_NORMAL",
+      "family": "Growth",
+      "household_type": "standard",
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-08T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2026-04-21T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 3,
+        "days_left_max": 3,
+        "confidence_label": "Building",
+        "source_label_contains": "early personal estimate",
+        "reminder_expected": true
+      }
+    },
+    {
+      "scenario_id": "ELEC_NOISE_SMALL_TOPUP",
+      "family": "Noise",
+      "household_type": "standard",
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-03T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2026-04-12T10:00:00Z"},
+        {"units": 1.0, "purchase_date": "2026-04-12T14:00:00Z"},
+        {"units": 13.0, "purchase_date": "2026-04-21T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 4,
+        "days_left_max": 5,
+        "confidence_label": "Building",
+        "source_label_contains": "early personal estimate",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "ELEC_FALLBACK_UNKNOWN",
+      "family": "Fallbacks",
+      "household_type": "alien_household",
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-23T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 5,
+        "days_left_max": 5,
+        "confidence_label": "Grid baseline",
+        "source_label_contains": "Kenya grid baseline",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "ELEC_REMINDER_7D",
+      "family": "Reminder Thresholds",
+      "household_type": "standard",
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-12T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2026-04-25T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 7,
+        "days_left_max": 7,
+        "confidence_label": "Building",
+        "source_label_contains": "early personal estimate",
+        "reminder_expected": true
+      }
+    },
+    {
+      "scenario_id": "ELEC_REMINDER_1D",
+      "family": "Reminder Thresholds",
+      "household_type": "standard",
+      "events": [
+        {"units": 13.0, "purchase_date": "2026-04-06T10:00:00Z"},
+        {"units": 13.0, "purchase_date": "2026-04-19T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 1,
+        "days_left_max": 1,
+        "confidence_label": "Building",
+        "source_label_contains": "early personal estimate",
+        "reminder_expected": true
+      }
+    },
+    {
+      "scenario_id": "ELEC_FULIZA_EDGE",
+      "family": "Fuliza Edge Cases",
+      "household_type": "standard",
+      "events": [
+        {"units": 5.0, "purchase_date": "2026-04-23T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 2,
+        "days_left_max": 2,
+        "confidence_label": "Grid baseline",
+        "source_label_contains": "Kenya grid baseline",
+        "reminder_expected": false
+      }
+    }
+  ]
+}
