@@ -30,6 +30,13 @@ SOURCE_LABELS = {
     "10+": "your personal average"
 }
 
+GAS_SOURCE_LABELS = {
+    "0-1": "Population baseline ({h_type} household)",
+    "2-4": "Building from refill history",
+    "5-9": "Based on your usage history",
+    "10+": "High-accuracy personal average"
+}
+
 def get_population_baseline(household_type: str) -> float:
     """Returns daily electricity rate from population baselines."""
     return POPULATION_BASELINES.get(household_type.lower(), POPULATION_BASELINES["standard"])
@@ -296,6 +303,18 @@ def get_source_label(n_readings: int, household_type: str) -> str:
     else: key = "10+"
     
     label = SOURCE_LABELS[key]
+    if "{h_type}" in label:
+        label = label.format(h_type=household_type.capitalize())
+    return label
+
+def get_gas_source_label(n_readings: int, household_type: str) -> str:
+    """Returns the descriptive source of the gas rate."""
+    if n_readings <= 1: key = "0-1"
+    elif n_readings <= 4: key = "2-4"
+    elif n_readings <= 9: key = "5-9"
+    else: key = "10+"
+    
+    label = GAS_SOURCE_LABELS[key]
     if "{h_type}" in label:
         label = label.format(h_type=household_type.capitalize())
     return label

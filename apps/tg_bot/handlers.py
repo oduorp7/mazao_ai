@@ -1274,10 +1274,19 @@ async def cmd_gas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         
         days_text = f"{proj['days_remaining']} days" if proj['days_remaining'] > 0 else "⚠️ Empty or Overdue"
         
+        # P17-T1G: Source explanation
+        h_type = tenant.get("household_type", "standard")
+        src_label = estimator.get_gas_source_label(proj["n"], h_type)
+        conf = estimator.get_confidence_info(proj["n"])
+        conf_text = f"Confidence: {conf['bar']} {conf['label']}"
+
         await _reply(update, M.GAS_DASHBOARD.format(
             depletion_date=proj["depletion_date"],
             days_remaining=days_text,
-            history_table=history_table
+            daily_rate=proj["daily_rate"],
+            source_explanation=src_label,
+            history_table=history_table,
+            confidence_info=conf_text
         ))
     else:
         # No history? Just show the prompt
@@ -2068,12 +2077,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if proj["n"] <= 1:
                 conf_text += "\n_Recording more refills will improve accuracy._"
 
+            # P17-T1G: Source Explanation
+            h_type = tenant.get("household_type", "standard")
+            src_label = estimator.get_gas_source_label(proj["n"], h_type)
+
             await _reply(update, M.GAS_RECORDED_SUCCESS.format(
                 amount_kg=amount_kg,
                 daily_rate=proj["daily_rate"],
                 days_remaining=proj["days_remaining"],
                 depletion_date=proj["depletion_date"],
-                confidence_info=conf_text
+                confidence_info=conf_text,
+                source_explanation=src_label
             ))
         except Exception as e:
             log.error("gas_entry_failed", error=str(e))

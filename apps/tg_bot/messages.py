@@ -464,6 +464,7 @@ Daily Rate: {daily_rate}kg
 ⏳ *Days Left:* {days_remaining}
 
 {confidence_info}
+_{source_explanation}_
 """
 
 GAS_DASHBOARD = """
@@ -471,13 +472,20 @@ GAS_DASHBOARD = """
 
 🗓️ *Est. Depletion:* {depletion_date}
 ⏳ *Days Left:* {days_remaining}
+Daily Rate: {daily_rate}kg ({source_explanation})
 
 📜 *Recent History:*
 {history_table}
 
-💡 *To log a new refill:*
-Enter: `amount date`
-Example: `13 22/04/2026`
+{confidence_info}
+"""
+GAS_LOW_REMINDER = """
+🔥 *Gas Alert!*
+
+Your gas is estimated to run out in *{days_remaining} days* ({depletion_date}).
+
+💡 *Action Required:* Please plan for a refill soon to avoid disruption. 
+To log a refill later, use /gas.
 """
 
 FULIZA_SMS_PROMPT = """
