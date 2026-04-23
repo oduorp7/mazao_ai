@@ -529,11 +529,11 @@ async def job_gas_alerts(bot: Bot) -> None:
     for tenant in tenants:
         tid = tenant["telegram_id"]
         try:
-            # 1. Fetch history
+            # 1. Fetch history (including alert flags for the latest entry)
             resp = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: db.get_client().table("gas_entries")
-                .select("amount_kg, purchase_date")
+                .select("*")
                 .eq("tenant_id", str(tenant["id"]))
                 .order("purchase_date", desc=True)
                 .execute()
@@ -541,6 +541,8 @@ async def job_gas_alerts(bot: Bot) -> None:
             
             if not resp.data:
                 continue
+            
+            latest_entry = resp.data[0]
                 
             # 2. Map & Project
             history = [{"units": r["amount_kg"], "purchase_date": r["purchase_date"]} for r in resp.data]
@@ -554,16 +556,20 @@ async def job_gas_alerts(bot: Bot) -> None:
             
             if conf_label != "Grid baseline":
                 alert_msg = None
+                update_field = None
                 
                 if days_rem <= 1:
                     alert_msg = M.GAS_LOW_REMINDER
                 elif days_rem <= 3:
-                    # Deduplication (In-memory slice: Gas lacks DB flags)
-                    # For now, we only fire if this is the first entry in history to hit this
-                    # This prevents repeat 3-day alerts if the background job runs again
-                    alert_msg = M.GAS_LOW_REMINDER
+                    # Deduplication (DB-backed)
+                    if not latest_entry.get("alert_3d_sent"):
+                        alert_msg = M.GAS_LOW_REMINDER
+                        update_field = "alert_3d_sent"
                 elif days_rem <= 7:
-                    alert_msg = M.GAS_LOW_REMINDER
+                    # Deduplication (DB-backed)
+                    if not latest_entry.get("alert_7d_sent"):
+                        alert_msg = M.GAS_LOW_REMINDER
+                        update_field = "alert_7d_sent"
 
                 if alert_msg:
                     await bot.send_message(
@@ -574,7 +580,17 @@ async def job_gas_alerts(bot: Bot) -> None:
                         ),
                         parse_mode=ParseMode.MARKDOWN
                     )
-                    log.info("gas_alert_sent", telegram_id=tid, days_left=days_rem)
+                    log.info("gas_alert_sent", telegram_id=tid, days_left=days_rem, threshold=update_field or "1d")
+                    
+                    # Mark as sent if applicable
+                    if update_field:
+                        await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda: db.get_client().table("gas_entries")
+                            .update({update_field: True})
+                            .eq("id", latest_entry["id"])
+                            .execute()
+                        )
                 
         except Exception as exc:
             log.error("gas_alert_failed", telegram_id=tid, error=str(exc))

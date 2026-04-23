@@ -147,7 +147,9 @@ CREATE TABLE IF NOT EXISTS gas_entries (
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     amount_kg       NUMERIC NOT NULL, -- e.g. 6 or 13
     purchase_date   DATE NOT NULL,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    alert_7d_sent   BOOLEAN DEFAULT FALSE,
+    alert_3d_sent   BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS fuliza_entries (
