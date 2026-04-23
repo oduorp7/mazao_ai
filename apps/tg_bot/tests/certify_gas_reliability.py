@@ -24,6 +24,7 @@ def run_certification():
     total = len(scenarios)
     passed = 0
     results = []
+    family_stats = {}
 
     for s in scenarios:
         sid = s["scenario_id"]
@@ -39,6 +40,10 @@ def run_certification():
         # Sort history desc (most recent first) as required by estimator
         history.sort(key=lambda x: x["purchase_date"], reverse=True)
         
+        if family not in family_stats:
+            family_stats[family] = {"total": 0, "passed": 0}
+        family_stats[family]["total"] += 1
+
         try:
             # Execute projection
             proj = estimator.get_gas_projection_state(history, h_type)
@@ -55,16 +60,23 @@ def run_certification():
             # 3. Source Label Contains
             src_ok = expected["source_label_contains"].lower() in src_label.lower()
             
-            scenario_passed = days_ok and conf_ok and src_ok
+            # 4. Reminder Status (P17-T1E Rule: 3,1 days AND not Grid baseline)
+            reminder_expected = expected.get("reminder_expected", False)
+            reminder_status = days_left in (3, 1) and conf_label != "Grid baseline"
+            rem_ok = reminder_status == reminder_expected
+            
+            scenario_passed = days_ok and conf_ok and src_ok and rem_ok
             
             if scenario_passed:
                 print(f"  ✅ PASSED")
                 passed += 1
+                family_stats[family]["passed"] += 1
             else:
                 print(f"  ❌ FAILED")
                 if not days_ok: print(f"    - Days Left: {days_left} (Expected {expected['days_left_min']}-{expected['days_left_max']})")
                 if not conf_ok: print(f"    - Confidence: '{conf_label}' (Expected '{expected['confidence_label']}')")
                 if not src_ok: print(f"    - Source: '{src_label}' (Expected to contain '{expected['source_label_contains']}')")
+                if not rem_ok: print(f"    - Reminder: {reminder_status} (Expected {reminder_expected})")
                 
             results.append({"id": sid, "passed": scenario_passed})
             
@@ -72,6 +84,13 @@ def run_certification():
             print(f"  💥 CRASH: {str(e)}")
             results.append({"id": sid, "passed": False, "error": str(e)})
 
+    print("\n" + "="*40)
+    print("FAMILY SUMMARY")
+    print("-" * 40)
+    for f, stats in family_stats.items():
+        status = "✅" if stats["passed"] == stats["total"] else "❌"
+        print(f"{status} {f}: {stats['passed']}/{stats['total']} Passed")
+    
     print("\n" + "="*40)
     print(f"CERTIFICATION SUMMARY: {passed}/{total} Passed")
     print("="*40)
