@@ -224,6 +224,56 @@
         "source_label_contains": "Population baseline",
         "reminder_expected": false
       }
+    },
+    {
+      "scenario_id": "GAS_REMINDER_7DAY_NORMALIZED",
+      "family": "Reminder Thresholds",
+      "household_type": "standard",
+      "events": [
+        {"amount_kg": 13.0, "purchase_date": "2026-02-15T10:00:00Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-03-14T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 7,
+        "days_left_max": 7,
+        "confidence_label": "Building",
+        "source_label_contains": "refill history",
+        "reminder_expected": true
+      }
+    },
+    {
+      "scenario_id": "GAS_DEDUP_7DAY_SUPPRESSED",
+      "family": "Deduplication",
+      "household_type": "standard",
+      "alert_7d_sent": true,
+      "events": [
+        {"amount_kg": 13.0, "purchase_date": "2026-02-15T10:00:00Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-03-14T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 7,
+        "days_left_max": 7,
+        "confidence_label": "Building",
+        "source_label_contains": "refill history",
+        "reminder_expected": false
+      }
+    },
+    {
+      "scenario_id": "GAS_DEDUP_3DAY_SUPPRESSED",
+      "family": "Deduplication",
+      "household_type": "standard",
+      "alert_3d_sent": true,
+      "events": [
+        {"amount_kg": 13.0, "purchase_date": "2026-02-11T10:00:00Z"},
+        {"amount_kg": 13.0, "purchase_date": "2026-03-10T10:00:00Z"}
+      ],
+      "expected": {
+        "days_left_min": 3,
+        "days_left_max": 3,
+        "confidence_label": "Building",
+        "source_label_contains": "refill history",
+        "reminder_expected": false
+      }
     }
   ]
 }

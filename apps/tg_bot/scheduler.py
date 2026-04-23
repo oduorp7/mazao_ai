@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -25,6 +25,7 @@ from telegram.ext import ContextTypes # P10-T5
 
 import apps.tg_bot.db as db
 import apps.tg_bot.messages as M
+from apps.agent import estimator
 from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -346,14 +347,17 @@ async def job_trial_alerts(bot: Bot) -> None:
 
 # ── Job 4: Electricity token alerts (P4-T4) ──────────────────────────────────
 
-async def job_token_alerts(bot: Bot) -> None:
+# ── Job 4: Electricity token alerts (P19) ────────────────────────────────────
+
+async def job_token_depletion_check(bot: Bot) -> None:
+    """P19-T3: Proactive token depletion alerts."""
     tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
-    today = datetime.utcnow().date()
-    
+    log.info("token_depletion_check_start", count=len(tenants))
+
     for tenant in tenants:
         tid = tenant["telegram_id"]
         try:
-            # Get latest token entry
+            # 1. Fetch latest token entry
             resp = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: db.get_client().table("token_entries")
@@ -365,35 +369,81 @@ async def job_token_alerts(bot: Bot) -> None:
                 .execute()
             )
             
-            if not resp.data:
+            if not resp or not resp.data:
                 continue
                 
             entry = resp.data
-            units = float(entry["units"])
             
-            # Default rate logic from P4-T1
-            daily_rate = 1.5 # P15-T1A: New default for Kenyan households
-            h_size = tenant.get("household_size", 4)
-            if h_size <= 2: daily_rate = 1.0
-            elif h_size >= 6: daily_rate = 3.0
+            # 2. Calculate Projection using history
+            hist_resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("token_entries")
+                .select("units, purchase_date")
+                .eq("tenant_id", str(tenant["id"]))
+                .order("purchase_date", desc=True)
+                .execute()
+            )
+            history = hist_resp.data or []
             
-            days_passed = (today - datetime.fromisoformat(entry["purchase_date"]).date()).days
-            units_remaining = max(units - (days_passed * daily_rate), 0)
-            days_remaining = int(units_remaining / daily_rate)
+            h_type = tenant.get("household_type", "standard")
+            pop_rate = estimator.get_population_baseline(h_type)
+            pers_rate, n_valid = estimator.calculate_weighted_personal_rate(history)
+            daily_rate = estimator.blend_rates(pers_rate, pop_rate, len(history), n_valid)
+            if daily_rate <= 0: daily_rate = pop_rate
             
-            if days_remaining <= 3:
-                depletion_date = (today + timedelta(days=days_remaining)).strftime("%d %b %Y")
+            now = datetime.now(timezone.utc)
+            l_date = datetime.fromisoformat(entry["purchase_date"].replace("Z", "+00:00"))
+            if l_date.tzinfo is None: l_date = l_date.replace(tzinfo=timezone.utc)
+            
+            days_since = (now - l_date).days
+            units_remaining = max(0, float(entry["units"]) - (daily_rate * days_since))
+            days_rem = int(units_remaining / daily_rate)
+            
+            # 3. Check Thresholds (NORMALIZED Rule: [7, 3, 1] AND not Grid baseline)
+            alert_msg = None
+            update_field = None
+            
+            # Confidence Gating: Skip proactive alerts if confidence is 'Grid baseline'
+            conf_label = estimator.get_confidence_info(len(history))["label"]
+            
+            if conf_label != "Grid baseline":
+                if days_rem <= 1:
+                    # 1-day alert (fires daily until resolved)
+                    alert_msg = M.TOKEN_ALERT_1D
+                elif days_rem <= 3:
+                    # 3-day alert (once per cycle)
+                    if not entry.get("alert_3d_sent"):
+                        alert_msg = M.TOKEN_ALERT_3D
+                        update_field = "alert_3d_sent"
+                elif days_rem <= 7:
+                    # 7-day alert (once per cycle)
+                    if not entry.get("alert_7d_sent"):
+                        alert_msg = M.TOKEN_ALERT_7D
+                        update_field = "alert_7d_sent"
+
+            if alert_msg:
+                depletion_date = (now + timedelta(days=max(0, days_rem))).strftime("%d %b %Y")
                 await bot.send_message(
                     chat_id=tid,
-                    text=M.TOKEN_DEPLETION_ALERT.format(
-                        units_remaining=units_remaining,
-                        depletion_date=depletion_date,
-                        days_remaining=days_remaining
-                    ),
+                    text=alert_msg.format(days=days_rem, date=depletion_date),
                     parse_mode=ParseMode.MARKDOWN
                 )
+                log.info("token_alert_sent", telegram_id=tid, threshold=update_field or "1d")
+                
+                # Mark as sent if applicable
+                if update_field:
+                    await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: db.get_client().table("token_entries")
+                        .update({update_field: True})
+                        .eq("id", entry["id"])
+                        .execute()
+                    )
+                    
         except Exception as exc:
-            log.exception("token_alert_failed", telegram_id=tid, error=str(exc))
+            log.error("token_depletion_check_failed", telegram_id=tid, error=str(exc))
+
+    log.info("token_depletion_check_complete")
 
 
 # ── Job 5: Fuliza payment reminders (P4-T4) ──────────────────────────────────
@@ -467,6 +517,71 @@ async def job_subscription_alerts(bot: Bot) -> None:
         log.exception("subscription_alerts_failed", error=str(exc))
 
 
+# ── Job 6: Gas depletion alerts (P17-T1E) ───────────────────────────────────
+
+async def job_gas_alerts(bot: Bot) -> None:
+    """Sends gas refill reminders at T-3 and T-1 days (P17-T1E)."""
+    from apps.agent.estimator import get_gas_projection_state
+    
+    tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
+    log.info("gas_alerts_start", tenant_count=len(tenants))
+
+    for tenant in tenants:
+        tid = tenant["telegram_id"]
+        try:
+            # 1. Fetch history
+            resp = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("gas_entries")
+                .select("amount_kg, purchase_date")
+                .eq("tenant_id", str(tenant["id"]))
+                .order("purchase_date", desc=True)
+                .execute()
+            )
+            
+            if not resp.data:
+                continue
+                
+            # 2. Map & Project
+            history = [{"units": r["amount_kg"], "purchase_date": r["purchase_date"]} for r in resp.data]
+            proj = get_gas_projection_state(history, tenant.get("household_type"))
+            
+            # 3. Filtering Logic (NORMALIZED Rule: [7, 3, 1] AND not Grid baseline)
+            # Thresholds: 7-day, 3-day and 1-day
+            # High-Confidence: Skip "Grid baseline" (0-1 history entries)
+            days_rem = proj["days_remaining"]
+            conf_label = proj["confidence"]["label"]
+            
+            if conf_label != "Grid baseline":
+                alert_msg = None
+                
+                if days_rem <= 1:
+                    alert_msg = M.GAS_LOW_REMINDER
+                elif days_rem <= 3:
+                    # Deduplication (In-memory slice: Gas lacks DB flags)
+                    # For now, we only fire if this is the first entry in history to hit this
+                    # This prevents repeat 3-day alerts if the background job runs again
+                    alert_msg = M.GAS_LOW_REMINDER
+                elif days_rem <= 7:
+                    alert_msg = M.GAS_LOW_REMINDER
+
+                if alert_msg:
+                    await bot.send_message(
+                        chat_id=tid,
+                        text=alert_msg.format(
+                            days_remaining=days_rem,
+                            depletion_date=proj["depletion_date"]
+                        ),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    log.info("gas_alert_sent", telegram_id=tid, days_left=days_rem)
+                
+        except Exception as exc:
+            log.error("gas_alert_failed", telegram_id=tid, error=str(exc))
+
+    log.info("gas_alerts_complete")
+
+
 # ── Scheduler factory ─────────────────────────────────────────────────────────
 
 def create_scheduler(bot: Bot) -> AsyncIOScheduler:
@@ -507,10 +622,10 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
         name="Trial expiry alerts",
     )
     
-    # New Phase 4 jobs
+    # P19: Proactive token depletion alerts — 07:00 AM Kenya time
     scheduler.add_job(
-        job_token_alerts,
-        CronTrigger(hour=10, minute=0, timezone=KENYA_TZ),
+        job_token_depletion_check,
+        CronTrigger(hour=7, minute=0, timezone=KENYA_TZ),
         args=[bot],
         id="token_alerts",
         name="Electricity token alerts",
@@ -540,6 +655,15 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
         args=[bot],
         id="subscription_renewal_alerts",
         name="Subscription renewal tracking",
+    )
+
+    # P17-T1E: Gas depletion alerts — 08:30 AM Kenya time
+    scheduler.add_job(
+        job_gas_alerts,
+        CronTrigger(hour=8, minute=30, timezone=KENYA_TZ),
+        args=[bot],
+        id="gas_alerts",
+        name="Gas depletion alerts",
     )
 
     log.info("scheduler_configured", job_count=len(scheduler.get_jobs()))

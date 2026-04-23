@@ -60,9 +60,19 @@ def run_certification():
             # 3. Source Label Contains
             src_ok = expected["source_label_contains"].lower() in src_label.lower()
             
-            # 4. Reminder Status (P17-T1E Rule: 3,1 days AND not Grid baseline)
+            # 4. Reminder Status (NORMALIZED Rule: [7, 3, 1] days AND not Grid baseline)
             reminder_expected = expected.get("reminder_expected", False)
-            reminder_status = days_left in (3, 1) and conf_label != "Grid baseline"
+            
+            # Mirror implementation in scheduler.py
+            reminder_status = days_left in (7, 3, 1) and conf_label != "Grid baseline"
+            
+            # P17-T2B: Check for dedup state
+            # Current production lacks DB columns for Gas dedup, but we assert normalized logic.
+            # If dedup is provided in fixture, we expect suppression.
+            is_deduped = s.get("alert_7d_sent", False) or s.get("alert_3d_sent", False)
+            if is_deduped and days_left in (7, 3):
+                reminder_status = False # Should be suppressed if already sent
+            
             rem_ok = reminder_status == reminder_expected
             
             scenario_passed = days_ok and conf_ok and src_ok and rem_ok

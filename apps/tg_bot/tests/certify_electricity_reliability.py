@@ -73,9 +73,16 @@ def run_certification():
             # Source Label
             src_ok = expected["source_label_contains"] in src_label
             
-            # Reminder Status (Electricity logic: 7, 3, 1 days)
+            # Reminder Status (NORMALIZED Electricity logic: 7, 3, 1 days AND not Grid baseline)
+            # Future-facing: will fail until normalization implementation
             reminder_expected = expected.get("reminder_expected", False)
-            reminder_status = days_left in (7, 3, 1)
+            reminder_status = days_left in (7, 3, 1) and conf_label != "Grid baseline"
+            
+            # P17-T2B: Check for dedup state if provided in fixture
+            is_deduped = s.get("alert_7d_sent", False) or s.get("alert_3d_sent", False)
+            if is_deduped and days_left in (7, 3):
+                reminder_status = False # Should be suppressed if already sent
+                
             rem_ok = reminder_status == reminder_expected
             
             scenario_passed = days_ok and conf_ok and src_ok and rem_ok
