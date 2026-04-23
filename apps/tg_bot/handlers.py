@@ -863,6 +863,288 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Processes electricity token entry (Full SMS or Quick entry)."""
+    tid = _tg_id(update)
+    text = (update.message.text or "").strip()
+
+    try:
+        # ── P16-FIX-FINAL: KPLC Token SMS Parser ─────────────────────────
+        # Mode A: full KPLC SMS paste — all 7 fields extracted via pure helper
+        # Mode B: legacy short format — graceful degradation, no cost breakdown
+        parsed = _parse_kplc_sms(text)
+
+        # Fields populated by whichever mode succeeds
+        meter_number = None
+        token_number = None
+        token_amount = None
+        other_charges = None
+        tier = None
+        rate_per_unit_stored = None
+        units = None
+        p_date = None
+        amount_paid = None
+        is_full_sms = False
+
+        if parsed:
+            # ── Mode A: Full KPLC SMS ─────────────────────────────────
+            is_full_sms = True
+            meter_number  = parsed["meter_number"]
+            token_number  = parsed["token_number"]
+            units         = parsed["units"]
+            amount_paid   = parsed["amount_paid"]
+            token_amount  = parsed["token_amount"]
+            other_charges = parsed["other_charges"]
+            p_date        = parsed["purchase_date"]
+
+            # Deduplication: block double-entry of same physical token
+            try:
+                dup_check = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: db.get_client().table("token_entries")
+                    .select("id, purchase_date")
+                    .eq("token_number", token_number)
+                    .maybe_single()
+                    .execute()
+                )
+                if dup_check.data:
+                    existing_date = str(dup_check.data.get("purchase_date", "unknown"))[:10]
+                    await _reply(
+                        update,
+                        f"⚡ *Token already recorded!*\n"
+                        f"Token `{token_number}` was logged on {existing_date}.\n"
+                        f"No duplicate entry created."
+                    )
+                    await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+                    return
+            except Exception as dup_exc:
+                # Pre-migration: token_number column may not exist yet — skip dedup safely
+                log.warning("dedup_check_skipped", error=str(dup_exc))
+
+            # Derive tariff tier using pure helper (uses KPLC_TARIFF_TIERS constant)
+            rate_per_unit_stored = round(token_amount / units, 4) if units > 0 else 0
+            tier = _detect_tariff_tier(rate_per_unit_stored)
+            log.info(
+                "kplc_sms_parsed",
+                meter=meter_number, units=units, amount=amount_paid,
+                token_amount=token_amount, tariff=tier["key"],
+                rate=round(rate_per_unit_stored, 2),
+            )
+        else:
+            # ── Mode B: Legacy short format — "units date [amount]" ───
+            parts = text.split()
+            if len(parts) < 2:
+                await _reply(update, M.TOKEN_ENTRY_PROMPT)
+                return
+
+            units = float(parts[0].replace(",", ""))
+            d_str = parts[1]
+
+            try:
+                from dateutil import parser as date_parser
+                p_date = date_parser.parse(d_str, dayfirst=True).date()
+                if p_date.year < 2000 or p_date.year > 2100:
+                    raise ValueError("invalid_year")
+            except Exception as e:
+                log.error("token_date_parse_failed", input=d_str, error=str(e))
+                await _reply(update, "❌ *Invalid Date*\nPlease use DD/MM/YYYY. Example: `22/04/2026` or `22/4/2026`")
+                return
+
+            if len(parts) >= 3:
+                try:
+                    amount_paid = float(parts[2].replace(",", ""))
+                except ValueError:
+                    pass
+
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+
+        # ── Store in token_entries ─────────────────────────────────────
+        insert_data = {
+            "tenant_id":     str(tenant["id"]),
+            "units":         units,
+            "purchase_date": p_date.isoformat(),
+            "amount_paid":   amount_paid,
+        }
+        # P16-FIX-FINAL: Add full SMS fields (nullable — backward compatible)
+        if is_full_sms:
+            insert_data["meter_number"]  = meter_number
+            insert_data["token_number"]  = token_number
+            insert_data["token_amount"]  = token_amount
+            insert_data["other_charges"] = other_charges
+            insert_data["tariff_tier"]   = tier["label"] if tier else None
+            insert_data["rate_per_unit"] = rate_per_unit_stored
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.get_client().table("token_entries").insert(insert_data).execute()
+            )
+        except Exception as insert_exc:
+            # Handle missing columns gracefully (pre-migration)
+            exc_str = str(insert_exc).lower()
+            # P17-T2H: Harden guard to include all optional columns that might be missing in live DB
+            if any(col in exc_str for col in ["meter_number", "token_number", "token_amount", "other_charges", "tariff_tier", "rate_per_unit", "amount_paid"]):
+                log.warning("new_columns_missing_fallback", error=str(insert_exc))
+                # Retry with basic fields only (guaranteed by schema.sql)
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: db.get_client().table("token_entries").insert({
+                        "tenant_id": str(tenant["id"]),
+                        "units": units,
+                        "purchase_date": p_date.isoformat(),
+                    }).execute()
+                )
+            else:
+                raise insert_exc
+        
+        # ── Hybrid Projection Math ────────────────────────────────────
+        token_resp = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: db.get_client().table("token_entries")
+            .select("units, purchase_date")
+            .eq("tenant_id", str(tenant["id"]))
+            .order("purchase_date", desc=True)
+            .execute()
+        )
+        readings = token_resp.data or []
+        n = len(readings)
+        
+        # Calculate rates — unpack tuple from updated estimator
+        h_type = tenant.get("household_type", "standard")
+        pop_rate = estimator.get_population_baseline(h_type)
+        pers_rate, n_valid = estimator.calculate_weighted_personal_rate(readings)
+
+        # Daily Rate — pass n_valid_intervals explicitly (P16-FIX-01-FINAL)
+        daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
+        if daily_rate <= 0:
+            daily_rate = pop_rate
+
+        # ── Carry-over Balance Logic (P16-FIX-FINAL) ──────────────────
+        # Instead of assuming the user is at 0, we estimate remaining units.
+        total_units_for_projection = units
+        if len(readings) >= 2:
+            prev = readings[1]
+            p_date_raw = prev["purchase_date"]
+            p_date = datetime.fromisoformat(p_date_raw.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            
+            # How many days since the last purchase?
+            # Safety: if token date is in future (test data), treat as 0.01 days
+            elapsed_seconds = (now - p_date).total_seconds()
+            elapsed_days = max(0.01, elapsed_seconds / 86400)
+            
+            # Estimate remaining units: (Prev Units - Consumed)
+            prev_units = float(prev["units"])
+            consumed = elapsed_days * daily_rate
+            remaining = max(0, prev_units - consumed)
+            
+            total_units_for_projection += remaining
+            log.info("carry_over_applied", new=units, remaining=round(remaining, 2), total=round(total_units_for_projection, 2))
+
+        # P16-FIX-FINAL: Enterprise Rounding
+        import math as _math
+        days_remaining = int(_math.ceil(total_units_for_projection / daily_rate))
+        if total_units_for_projection > 0 and days_remaining == 0:
+            days_remaining = 1
+        depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
+        
+        # Confidence Info
+        conf = estimator.get_confidence_info(n)
+        src_label = estimator.get_source_label(n, h_type)
+        
+        # Anomaly Detection
+        anomaly_warning = ""
+        if n >= 3 and pers_rate:
+            if n >= 2:
+                d1 = datetime.fromisoformat(readings[0]["purchase_date"].replace("Z", "+00:00")).date()
+                d2 = datetime.fromisoformat(readings[1]["purchase_date"].replace("Z", "+00:00")).date()
+                gap_days = (d1 - d2).days
+                if gap_days > 0:
+                    this_rate = units / gap_days
+                    if estimator.detect_anomaly(this_rate, readings[1:]):
+                        anomaly_warning = "\n\n⚠️ *Anomaly Detected:* This reading seems unusual compared to your history."
+
+        # Range/Confidence Interval
+        range_text = ""
+        interval = estimator.confidence_interval(readings, daily_rate)
+        if interval:
+            range_text = f"\nRange: {interval[0]} - {interval[1]} units/day"
+
+        # Encouragement
+        encouragement = ""
+        if n == 1: encouragement = "\n_Recording more tokens will improve accuracy._"
+        elif 2 <= n <= 4: encouragement = "\n_Learning your patterns..._"
+        elif 5 <= n <= 9: encouragement = "\n_High accuracy achieved._"
+        
+        # ── Cost Breakdown (P16-FIX-FINAL) ───────────────────────────
+        # P17-T1-FIX: Centralize cost breakdown in estimator with 52.5% D1 ratio.
+        breakdown_text = ""
+        if amount_paid and amount_paid > 0:
+            t_key = tier["key"] if (is_full_sms and tier) else "D1"
+            bd = estimator.get_cost_breakdown(amount_paid, tariff=t_key, actual_tkn=token_amount if is_full_sms else None)
+            
+            elec_pct = bd["percentage"]
+            rate_display = round(bd["electricity"] / units, 2) if units > 0 else 0
+            tier_label = tier["label"] if (is_full_sms and tier) else "D1 Lifeline (Estimated)"
+
+            breakdown_text = (
+                f"\n\n💡 *Cost Breakdown{' (from your token)' if is_full_sms else ''}:*\n"
+                f"Actual electricity: KES {bd['electricity']:,.2f} ({elec_pct}%)\n"
+                f"Taxes & levies:     KES {bd['taxes']:,.2f} ({round(100-elec_pct, 1)}%)\n"
+                f"Your rate: KES {rate_display}/unit — {tier_label}\n"
+                f"_Levy charges vary monthly per EPRA gazette._\n\n"
+                f"Only {elec_pct}% of your KES {amount_paid:,.0f} was electricity."
+            )
+            if not is_full_sms:
+                breakdown_text += "\n\n💡 _Paste the full KPLC token SMS next time for a more accurate breakdown._"
+
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+
+        # P16-T1: AI engagement tip (safe, optional, free-tier LLM)
+        tip_text = ""
+        try:
+            from apps.agent import tips as tips_engine
+            anomaly_flag = bool(anomaly_warning)
+            if tips_engine.should_show_tip(n, anomaly_flag):
+                tip = await tips_engine.generate_tip({
+                    "units":           units,
+                    "household_type":  h_type,
+                    "daily_rate":      daily_rate,
+                    "days_remaining":  days_remaining,
+                    "entry_count":     n,
+                    "amount_paid":     amount_paid,
+                    "personal_rate":   pers_rate,
+                    "population_rate": pop_rate,
+                    "anomaly":         anomaly_flag,
+                    # P16-FIX-FINAL: richer context when full SMS parsed
+                    "token_amount":    token_amount if is_full_sms else None,
+                    "other_charges":   other_charges if is_full_sms else None,
+                    "tariff_tier":     tier["label"] if (is_full_sms and tier) else None,
+                })
+                if tip:
+                    tip_text = f"\n\n💡 _{tip}_"
+        except Exception as _tip_exc:
+            log.warning("tip_pipeline_skipped", error=str(_tip_exc))
+
+        response = (
+            f"⚡ *Token Recorded!*\n\n"
+            f"Units: {units}\n"
+            f"Daily Rate: {daily_rate} units ({src_label})\n"
+            f"Est. Depletion: {depletion_date}\n"
+            f"Days Left: {days_remaining}\n"
+            f"Confidence: {conf['bar']} {conf['label']}"
+            f"{range_text}"
+            f"{anomaly_warning}"
+            f"{breakdown_text}"
+            f"{tip_text}"
+            f"{encouragement}"
+        )
+        
+        await _reply(update, response)
+    except ValueError:
+        await _reply(update, M.TOKEN_INVALID_VALUE)
+
+
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles uploaded statement files (CSV, PDF, TXT)."""
     tid = _tg_id(update)
@@ -1898,284 +2180,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     if state == "awaiting_tokens":
-        try:
-
-            # ── P16-FIX-FINAL: KPLC Token SMS Parser ─────────────────────────
-            # Mode A: full KPLC SMS paste — all 7 fields extracted via pure helper
-            # Mode B: legacy short format — graceful degradation, no cost breakdown
-            parsed = _parse_kplc_sms(text)
-
-            # Fields populated by whichever mode succeeds
-            meter_number = None
-            token_number = None
-            token_amount = None
-            other_charges = None
-            tier = None
-            rate_per_unit_stored = None
-            units = None
-            p_date = None
-            amount_paid = None
-            is_full_sms = False
-
-            if parsed:
-                # ── Mode A: Full KPLC SMS ─────────────────────────────────
-                is_full_sms = True
-                meter_number  = parsed["meter_number"]
-                token_number  = parsed["token_number"]
-                units         = parsed["units"]
-                amount_paid   = parsed["amount_paid"]
-                token_amount  = parsed["token_amount"]
-                other_charges = parsed["other_charges"]
-                p_date        = parsed["purchase_date"]
-
-                # Deduplication: block double-entry of same physical token
-                try:
-                    dup_check = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: db.get_client().table("token_entries")
-                        .select("id, purchase_date")
-                        .eq("token_number", token_number)
-                        .maybe_single()
-                        .execute()
-                    )
-                    if dup_check.data:
-                        existing_date = str(dup_check.data.get("purchase_date", "unknown"))[:10]
-                        await _reply(
-                            update,
-                            f"⚡ *Token already recorded!*\n"
-                            f"Token `{token_number}` was logged on {existing_date}.\n"
-                            f"No duplicate entry created."
-                        )
-                        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-                        return
-                except Exception as dup_exc:
-                    # Pre-migration: token_number column may not exist yet — skip dedup safely
-                    log.warning("dedup_check_skipped", error=str(dup_exc))
-
-                # Derive tariff tier using pure helper (uses KPLC_TARIFF_TIERS constant)
-                rate_per_unit_stored = round(token_amount / units, 4) if units > 0 else 0
-                tier = _detect_tariff_tier(rate_per_unit_stored)
-                log.info(
-                    "kplc_sms_parsed",
-                    meter=meter_number, units=units, amount=amount_paid,
-                    token_amount=token_amount, tariff=tier["key"],
-                    rate=round(rate_per_unit_stored, 2),
-                )
-            else:
-                # ── Mode B: Legacy short format — "units date [amount]" ───
-                parts = text.split()
-                if len(parts) < 2:
-                    await _reply(update, M.TOKEN_ENTRY_PROMPT)
-                    return
-
-                units = float(parts[0].replace(",", ""))
-                d_str = parts[1]
-
-                try:
-                    from dateutil import parser as date_parser
-                    p_date = date_parser.parse(d_str, dayfirst=True).date()
-                    if p_date.year < 2000 or p_date.year > 2100:
-                        raise ValueError("invalid_year")
-                except Exception as e:
-                    log.error("token_date_parse_failed", input=d_str, error=str(e))
-                    await _reply(update, "❌ *Invalid Date*\nPlease use DD/MM/YYYY. Example: `22/04/2026` or `22/4/2026`")
-                    return
-
-                if len(parts) >= 3:
-                    try:
-                        amount_paid = float(parts[2].replace(",", ""))
-                    except ValueError:
-                        pass
-
-            tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-
-            # ── Store in token_entries ─────────────────────────────────────
-            insert_data = {
-                "tenant_id":     str(tenant["id"]),
-                "units":         units,
-                "purchase_date": p_date.isoformat(),
-                "amount_paid":   amount_paid,
-            }
-            # P16-FIX-FINAL: Add full SMS fields (nullable — backward compatible)
-            if is_full_sms:
-                insert_data["meter_number"]  = meter_number
-                insert_data["token_number"]  = token_number
-                insert_data["token_amount"]  = token_amount
-                insert_data["other_charges"] = other_charges
-                insert_data["tariff_tier"]   = tier["label"] if tier else None
-                insert_data["rate_per_unit"] = rate_per_unit_stored
-
-            try:
-                await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: db.get_client().table("token_entries").insert(insert_data).execute()
-                )
-            except Exception as insert_exc:
-                # Handle missing columns gracefully (pre-migration)
-                exc_str = str(insert_exc).lower()
-                # P17-T2H: Harden guard to include all optional columns that might be missing in live DB
-                if any(col in exc_str for col in ["meter_number", "token_number", "token_amount", "other_charges", "tariff_tier", "rate_per_unit", "amount_paid"]):
-                    log.warning("new_columns_missing_fallback", error=str(insert_exc))
-                    # Retry with basic fields only (guaranteed by schema.sql)
-                    await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: db.get_client().table("token_entries").insert({
-                            "tenant_id": str(tenant["id"]),
-                            "units": units,
-                            "purchase_date": p_date.isoformat(),
-                        }).execute()
-                    )
-                else:
-                    raise insert_exc
-            
-            # ── Hybrid Projection Math ────────────────────────────────────
-            token_resp = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: db.get_client().table("token_entries")
-                .select("units, purchase_date")
-                .eq("tenant_id", str(tenant["id"]))
-                .order("purchase_date", desc=True)
-                .execute()
-            )
-            readings = token_resp.data or []
-            n = len(readings)
-            
-            # Calculate rates — unpack tuple from updated estimator
-            h_type = tenant.get("household_type", "standard")
-            pop_rate = estimator.get_population_baseline(h_type)
-            pers_rate, n_valid = estimator.calculate_weighted_personal_rate(readings)
-
-            # Daily Rate — pass n_valid_intervals explicitly (P16-FIX-01-FINAL)
-            daily_rate = estimator.blend_rates(pers_rate, pop_rate, n, n_valid)
-            if daily_rate <= 0:
-                daily_rate = pop_rate
-
-            # ── Carry-over Balance Logic (P16-FIX-FINAL) ──────────────────
-            # Instead of assuming the user is at 0, we estimate remaining units.
-            total_units_for_projection = units
-            if len(readings) >= 2:
-                prev = readings[1]
-                p_date_raw = prev["purchase_date"]
-                p_date = datetime.fromisoformat(p_date_raw.replace("Z", "+00:00"))
-                now = datetime.now(timezone.utc)
-                
-                # How many days since the last purchase?
-                # Safety: if token date is in future (test data), treat as 0.01 days
-                elapsed_seconds = (now - p_date).total_seconds()
-                elapsed_days = max(0.01, elapsed_seconds / 86400)
-                
-                # Estimate remaining units: (Prev Units - Consumed)
-                prev_units = float(prev["units"])
-                consumed = elapsed_days * daily_rate
-                remaining = max(0, prev_units - consumed)
-                
-                total_units_for_projection += remaining
-                log.info("carry_over_applied", new=units, remaining=round(remaining, 2), total=round(total_units_for_projection, 2))
-
-            # P16-FIX-FINAL: Enterprise Rounding
-            import math as _math
-            days_remaining = int(_math.ceil(total_units_for_projection / daily_rate))
-            if total_units_for_projection > 0 and days_remaining == 0:
-                days_remaining = 1
-            depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
-            
-            # Confidence Info
-            conf = estimator.get_confidence_info(n)
-            src_label = estimator.get_source_label(n, h_type)
-            
-            # Anomaly Detection
-            anomaly_warning = ""
-            if n >= 3 and pers_rate:
-                if n >= 2:
-                    d1 = datetime.fromisoformat(readings[0]["purchase_date"].replace("Z", "+00:00")).date()
-                    d2 = datetime.fromisoformat(readings[1]["purchase_date"].replace("Z", "+00:00")).date()
-                    gap_days = (d1 - d2).days
-                    if gap_days > 0:
-                        this_rate = units / gap_days
-                        if estimator.detect_anomaly(this_rate, readings[1:]):
-                            anomaly_warning = "\n\n⚠️ *Anomaly Detected:* This reading seems unusual compared to your history."
-
-            # Range/Confidence Interval
-            range_text = ""
-            interval = estimator.confidence_interval(readings, daily_rate)
-            if interval:
-                range_text = f"\nRange: {interval[0]} - {interval[1]} units/day"
-
-            # Encouragement
-            encouragement = ""
-            if n == 1: encouragement = "\n_Recording more tokens will improve accuracy._"
-            elif 2 <= n <= 4: encouragement = "\n_Learning your patterns..._"
-            elif 5 <= n <= 9: encouragement = "\n_High accuracy achieved._"
-            
-            # ── Cost Breakdown (P16-FIX-FINAL) ───────────────────────────
-            # P17-T1-FIX: Centralize cost breakdown in estimator with 52.5% D1 ratio.
-            breakdown_text = ""
-            if amount_paid and amount_paid > 0:
-                t_key = tier["key"] if (is_full_sms and tier) else "D1"
-                bd = estimator.get_cost_breakdown(amount_paid, tariff=t_key, actual_tkn=token_amount if is_full_sms else None)
-                
-                elec_pct = bd["percentage"]
-                rate_display = round(bd["electricity"] / units, 2) if units > 0 else 0
-                tier_label = tier["label"] if (is_full_sms and tier) else "D1 Lifeline (Estimated)"
-
-                breakdown_text = (
-                    f"\n\n💡 *Cost Breakdown{' (from your token)' if is_full_sms else ''}:*\n"
-                    f"Actual electricity: KES {bd['electricity']:,.2f} ({elec_pct}%)\n"
-                    f"Taxes & levies:     KES {bd['taxes']:,.2f} ({round(100-elec_pct, 1)}%)\n"
-                    f"Your rate: KES {rate_display}/unit — {tier_label}\n"
-                    f"_Levy charges vary monthly per EPRA gazette._\n\n"
-                    f"Only {elec_pct}% of your KES {amount_paid:,.0f} was electricity."
-                )
-                if not is_full_sms:
-                    breakdown_text += "\n\n💡 _Paste the full KPLC token SMS next time for a more accurate breakdown._"
-
-            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-
-            # P16-T1: AI engagement tip (safe, optional, free-tier LLM)
-            tip_text = ""
-            try:
-                from apps.agent import tips as tips_engine
-                anomaly_flag = bool(anomaly_warning)
-                if tips_engine.should_show_tip(n, anomaly_flag):
-                    tip = await tips_engine.generate_tip({
-                        "units":           units,
-                        "household_type":  h_type,
-                        "daily_rate":      daily_rate,
-                        "days_remaining":  days_remaining,
-                        "entry_count":     n,
-                        "amount_paid":     amount_paid,
-                        "personal_rate":   pers_rate,
-                        "population_rate": pop_rate,
-                        "anomaly":         anomaly_flag,
-                        # P16-FIX-FINAL: richer context when full SMS parsed
-                        "token_amount":    token_amount if is_full_sms else None,
-                        "other_charges":   other_charges if is_full_sms else None,
-                        "tariff_tier":     tier["label"] if (is_full_sms and tier) else None,
-                    })
-                    if tip:
-                        tip_text = f"\n\n💡 _{tip}_"
-            except Exception as _tip_exc:
-                log.warning("tip_pipeline_skipped", error=str(_tip_exc))
-
-            response = (
-                f"⚡ *Token Recorded!*\n\n"
-                f"Units: {units}\n"
-                f"Daily Rate: {daily_rate} units ({src_label})\n"
-                f"Est. Depletion: {depletion_date}\n"
-                f"Days Left: {days_remaining}\n"
-                f"Confidence: {conf['bar']} {conf['label']}"
-                f"{range_text}"
-                f"{anomaly_warning}"
-                f"{breakdown_text}"
-                f"{tip_text}"
-                f"{encouragement}"
-            )
-            
-            await _reply(update, response)
-        except ValueError:
-            await _reply(update, M.TOKEN_INVALID_VALUE)
-        return
-
+        return await awaiting_tokens(update, context)
 
     if state == "awaiting_gas":
         # P17-T1B-FIX: Strict regex for <amount> <dd/mm/yyyy>
