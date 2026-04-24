@@ -99,7 +99,12 @@ async def get_trial_status(tenant_id: str) -> dict:
     }
 
 
-SUPERADMIN_TELEGRAM_IDS = ["123456789"] # Add chief engineer IDs here
+def _get_superadmin_ids() -> list:
+    """Build superadmin list from ADMIN_TELEGRAM_ID env var (canonical source)."""
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+    return [str(admin_id)] if admin_id else []
+
+SUPERADMIN_TELEGRAM_IDS = _get_superadmin_ids()
 
 async def is_feature_allowed(tenant_id: str, feature: str) -> bool:
     """
@@ -112,19 +117,20 @@ async def is_feature_allowed(tenant_id: str, feature: str) -> bool:
     - 'ai_insights': biashara only
     - 'compliance_alerts': always True (even for expired free)
     """
-    # FAANG-grade superadmin bypass layer
-    try:
-        db = get_client()
-        def _get_tid():
-            resp = db.table("tenants").select("telegram_id").eq("id", tenant_id).maybe_single().execute()
-            return str(resp.data["telegram_id"]) if resp and resp.data else None
+    # Superadmin bypass: resolve telegram_id and check against env-sourced list
+    if SUPERADMIN_TELEGRAM_IDS:
+        try:
+            db = get_client()
+            def _get_tid():
+                resp = db.table("tenants").select("telegram_id").eq("id", tenant_id).maybe_single().execute()
+                return str(resp.data["telegram_id"]) if resp and resp.data else None
 
-        tid = await asyncio.get_event_loop().run_in_executor(None, _get_tid)
-        if tid and tid in SUPERADMIN_TELEGRAM_IDS:
-            log.info("superadmin_gate_bypass", telegram_id=tid, feature=feature)
-            return True
-    except Exception:
-        pass # Allow tests without DB mocks to proceed
+            tid = await asyncio.get_event_loop().run_in_executor(None, _get_tid)
+            if tid and tid in SUPERADMIN_TELEGRAM_IDS:
+                log.info("superadmin_gate_bypass", telegram_id=tid, feature=feature)
+                return True
+        except Exception:
+            pass  # Fail closed: normal gating continues
 
 
     if feature == "compliance_alerts":
