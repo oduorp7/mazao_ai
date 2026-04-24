@@ -183,11 +183,48 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         insert_args = mock_db.get_client().table().insert.call_args[0][0]
         self.assertEqual(insert_args["amount_borrowed"], 191.57)
         self.assertEqual(insert_args["balance"], 193.49)
+        mock_reply.assert_called()
+        reply_text = mock_reply.call_args[0][1]
+        self.assertIn("💸 *Borrowed:* KES 191.57", reply_text)
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_fuliza_legacy_fallback(self, mock_reply, mock_db):
+        """Verify Legacy format works (KES X.XX and Date)."""
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        
+        self.update.effective_message.text = "My Fuliza balance is KES 450.00. Please pay by 25/04/2026"
+        
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        
+        insert_args = mock_db.get_client().table().insert.call_args[0][0]
+        self.assertEqual(insert_args["balance"], 450.00)
+        self.assertNotIn("amount_borrowed", insert_args)
         self.assertNotIn("code", insert_args)
         
         mock_reply.assert_called()
         reply_text = mock_reply.call_args[0][1]
-        self.assertIn("💸 *Borrowed:* KES 191.57", reply_text)
+        self.assertIn("💰 *Outstanding:* KES 450.00", reply_text)
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_fuliza_invalid_input(self, mock_reply, mock_db):
+        """Verify Invalid input throws correct message."""
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        
+        import apps.tg_bot.messages as M
+        
+        # Missing date and amount formats
+        self.update.effective_message.text = "Just some random text"
+        
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        
+        mock_db.get_client().table().insert.assert_not_called()
+        mock_reply.assert_called_with(self.update, M.FULIZA_PARSE_FAILED)
 
 class TestSchedulerStopGates(unittest.IsolatedAsyncioTestCase):
     """Tier A: Verify that scheduler jobs respect user stop-gates."""
