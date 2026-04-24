@@ -25,6 +25,7 @@ Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technic
 - **[Governance & Protocols](docs/governance/PROTOCOL.json)**: Engineering rules, security protocols, and Phase-Gate requirements.
 - **[Legal & Compliance](docs/legal/PRIVACY_POLICY.md)**: Data protection (ODPC), privacy disclosures, and KRA/ODPC compliance.
 - **[Engineering Contract](docs/governance/CONTRACT.md)**: Service Level Agreements (SLA) and development standards.
+- [ ] **[Regression & Certification](docs/strategy/REGRESSION_POLICY.md)**: System-wide protection tiers, deploy gates, and Tier A flow invariants.
 - **[Phase History](docs/history/PHASE_LOG.md)**: Detailed audit log of every completed engineering phase.
 
 ---

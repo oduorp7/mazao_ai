@@ -26,5 +26,12 @@ if ! python -c 'import sys; sys.path.insert(0, "."); import importlib.util; spec
     exit 1
 fi
 
-echo "✅ All pre-deploy gates passed!"
+# GATE 3: Regression Certification (Tier A)
+echo "🛡️ Gate 3: Running Tier A Regression Suite..."
+if ! python -m unittest apps/tg_bot/tests/test_estimator_regression.py apps/tg_bot/tests/certify_utility_ingestion_smoke.py; then
+    echo "❌ Gate 3 Failed: Tier A regressions detected. Deployment BLOCKED."
+    exit 1
+fi
+
+echo "✅ All pre-deploy gates passed! System is stable for release."
 exit 0
