@@ -26,7 +26,12 @@ Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technic
 - **[Legal & Compliance](docs/legal/PRIVACY_POLICY.md)**: Data protection (ODPC), privacy disclosures, and KRA/ODPC compliance.
 - **[Engineering Contract](docs/governance/CONTRACT.md)**: Service Level Agreements (SLA) and development standards.
 - [x] **Regression & Certification**: System-wide protection tiers, deploy gates, and Tier A flow invariants.
-- **[Subscription Policy](docs/strategy/SUBSCRIPTION_POLICY.md)**: Tiered access gating for premium features (Reports, AI Insights, Utility Tracking).
+- [x] **Regression & Certification**: System-wide protection tiers, deploy gates, and Tier A flow invariants.
+- **[Subscription Policy](docs/strategy/SUBSCRIPTION_POLICY.md)**: Tiered access gating:
+    - **Free (KES 0)**: Manual tracking & basic dashboard.
+    - **Core (KES 149/mo)**: Proactive alerts & utility projections.
+    - **Pro (KES 399/mo)**: AI Insights, Tips, and Anomaly Detection.
+    - **Trial (7 Days)**: Full **PRO** access for all new users.
 
 ---
 | `/till` | Register M-Pesa Till | Business | Any |

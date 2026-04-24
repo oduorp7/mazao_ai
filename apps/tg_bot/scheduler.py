@@ -325,22 +325,22 @@ async def job_trial_alerts(bot: Bot) -> None:
             continue
 
         try:
-            if delta == 3:
+            if delta == 1:
                 await bot.send_message(
                     chat_id=tid,
-                    text=M.TRIAL_EXPIRY_WARNING.format(days_remaining=3),
+                    text=M.TRIAL_EXPIRY_WARNING.format(days_remaining=1),
                     parse_mode=ParseMode.MARKDOWN
                 )
-            elif delta == 0:
+            elif delta <= 0:
                 await bot.send_message(
                     chat_id=tid,
                     text=M.TRIAL_EXPIRED,
                     parse_mode=ParseMode.MARKDOWN
                 )
-                # Mark as expired in DB
+                # Mark as expired and downgrade to Free plan
                 await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: db.update_tenant(tid, {"status": "paused"})
+                    lambda: db.update_tenant(tid, {"status": "lapsed", "plan": "free"})
                 )
         except Exception as exc:
             log.exception("trial_alert_failed", telegram_id=tid, error=str(exc))

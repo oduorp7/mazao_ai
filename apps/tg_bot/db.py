@@ -62,8 +62,8 @@ def create_tenant(
                 "telegram_username": telegram_username,
                 "full_name": full_name,
                 "status": "pending",        # pending → active after M-Pesa setup
-                "plan": "trial",            # trial → hustler → biashara
-                "trial_days_left": 14,
+                "plan": "trial",            # trial | free | core | pro
+                "trial_days_left": 7,
                 "created_at": datetime.utcnow().isoformat(),
             }
         )

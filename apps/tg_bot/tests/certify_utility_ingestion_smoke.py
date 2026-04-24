@@ -167,5 +167,43 @@ class TestSchedulerStopGates(unittest.IsolatedAsyncioTestCase):
         
         self.bot.send_message.assert_not_called()
 
+class TestTierGating(unittest.IsolatedAsyncioTestCase):
+    """Tier A: Verify that feature gating respects the 4-tier matrix."""
+
+    def setUp(self):
+        self.tid = 123456789
+
+    @patch('apps.tg_bot.trial.get_trial_status', new_callable=AsyncMock)
+    async def test_trial_full_pro_access(self, mock_status):
+        """Trial must have full access."""
+        mock_status.return_value = {"active": True, "plan": "trial"}
+        from apps.tg_bot.trial import is_feature_allowed
+        self.assertTrue(await is_feature_allowed(self.tid, "ai_tips"))
+        self.assertTrue(await is_feature_allowed(self.tid, "proactive_alerts"))
+
+    @patch('apps.tg_bot.trial.get_trial_status', new_callable=AsyncMock)
+    async def test_free_tier_manual_only(self, mock_status):
+        """Free tier must block AI and alerts."""
+        mock_status.return_value = {"active": False, "plan": "free"}
+        from apps.tg_bot.trial import is_feature_allowed
+        self.assertTrue(await is_feature_allowed(self.tid, "manual_tracking"))
+        self.assertFalse(await is_feature_allowed(self.tid, "ai_tips"))
+        self.assertFalse(await is_feature_allowed(self.tid, "proactive_alerts"))
+
+    @patch('apps.tg_bot.trial.get_trial_status', new_callable=AsyncMock)
+    async def test_core_tier_access(self, mock_status):
+        """Core tier has alerts but no AI tips."""
+        mock_status.return_value = {"active": True, "plan": "core"}
+        from apps.tg_bot.trial import is_feature_allowed
+        self.assertTrue(await is_feature_allowed(self.tid, "proactive_alerts"))
+        self.assertFalse(await is_feature_allowed(self.tid, "ai_tips"))
+
+    @patch('apps.tg_bot.trial.get_trial_status', new_callable=AsyncMock)
+    async def test_pro_tier_access(self, mock_status):
+        """Pro tier has everything."""
+        mock_status.return_value = {"active": True, "plan": "pro"}
+        from apps.tg_bot.trial import is_feature_allowed
+        self.assertTrue(await is_feature_allowed(self.tid, "ai_tips"))
+
 if __name__ == '__main__':
     unittest.main()

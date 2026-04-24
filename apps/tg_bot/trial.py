@@ -5,10 +5,23 @@ Manages trial initialization, expiry calculation, and feature access
 control based on user plans.
 
 Plans:
-  - 'free': Expired trial, compliance alerts only.
-  - 'mtu_wenyewe': Individual business tracking (reports, utility).
-  - 'biashara': Full suite (daily reports, AI insights).
+  - 'free': Manual tracking only.
+  - 'core': Unlimited utility tracking + proactive alerts.
+  - 'pro': Full AI insights + AI tips.
+  - 'trial': Temporary PRO access for 7 days.
 """
+
+TIER_TRIAL = "trial"
+TIER_FREE = "free"
+TIER_CORE = "core"
+TIER_PRO = "pro"
+
+TIER_MATRIX = {
+    TIER_TRIAL: ["manual_tracking", "status_dashboards", "proactive_alerts", "projections", "ai_tips", "insights"],
+    TIER_FREE:  ["manual_tracking", "status_dashboards"],
+    TIER_CORE:  ["manual_tracking", "status_dashboards", "proactive_alerts", "projections"],
+    TIER_PRO:   ["manual_tracking", "status_dashboards", "proactive_alerts", "projections", "ai_tips", "insights"],
+}
 
 import asyncio
 import os
@@ -27,7 +40,7 @@ async def start_trial(tenant_id: str):
     """
     db = get_client()
     now = datetime.utcnow()
-    ends = now + timedelta(days=14)
+    ends = now + timedelta(days=7)
 
     def _sync_start():
         try:
@@ -42,8 +55,8 @@ async def start_trial(tenant_id: str):
             # Fallback if primary trial columns are missing: update existing 'plan' and 'trial_days_left' if possible
             try:
                 return db.table("tenants").update({
-                    "plan": "free",
-                    "trial_days_left": 14
+                    "plan": "trial",
+                    "trial_days_left": 7
                 }).eq("id", tenant_id).execute()
             except Exception as e2:
                 log.error("fallback_trial_start_failed", error=str(e2))
@@ -110,20 +123,10 @@ async def is_feature_allowed(tenant_id: str, feature: str) -> bool:
     plan = status["plan"]
     trial_active = status["active"]
 
-    if plan == "biashara":
-        return True
+    # Trial plan uses TIER_TRIAL permissions if active
+    if trial_active and plan == "trial":
+        return feature in TIER_MATRIX[TIER_TRIAL]
 
-    if plan == "mtu_wenyewe":
-        # Block biashara-only features
-        if feature in ("daily_report", "ai_insights"):
-            return False
-        return True
-
-    # Free plan relies entirely on active trial
-    if trial_active:
-        # Trials get 'mtu_wenyewe' level access
-        if feature in ("daily_report", "ai_insights"):
-            return False
-        return True
-
-    return False
+    # Otherwise use plan-specific matrix
+    allowed_features = TIER_MATRIX.get(plan, TIER_MATRIX[TIER_FREE])
+    return feature in allowed_features
