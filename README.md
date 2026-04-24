@@ -60,6 +60,7 @@ Mazao AI implements a unified, stateful alerting system for Electricity (Tokens)
 1.  **Confidence Gating**: Proactive alerts are suppressed if confidence is "Grid baseline" (0-1 history entries) to avoid low-accuracy noise.
 2.  **Durable State**: 7-day and 3-day alerts are recorded in the database and will not refire until a new refill row is detected.
 3.  **Critical Urgency**: 1-day alerts bypass deduplication and fire daily until a refill is logged.
+4.  **Universal Stop-Gate**: All automated alerts (Utilities, Fuliza, Subscriptions) strictly respect the user `/stop` command. Paused or lapsed accounts receive zero scheduled messages.
 
 ### 📅 Backfill & Historical Learning
 

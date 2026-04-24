@@ -455,7 +455,8 @@ async def job_fuliza_alerts(bot: Bot) -> None:
         resp = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: db.get_client().table("fuliza_entries")
-            .select("*, tenants(telegram_id)")
+            .select("*, tenants!inner(telegram_id, status)")
+            .in_("tenants.status", ["active", "trial"])
             .execute()
         )
         
@@ -485,7 +486,8 @@ async def job_subscription_alerts(bot: Bot) -> None:
         resp = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: db.get_client().table("subscriptions")
-            .select("*, tenants(telegram_id)")
+            .select("*, tenants!inner(telegram_id, status)")
+            .in_("tenants.status", ["active", "trial"])
             .execute()
         )
         
@@ -701,7 +703,7 @@ async def job_subscription_renewal_alerts(bot: Bot):
     today = datetime.now(timezone.utc)
     
     # Get all active tenants
-    resp = db.table("tenants").select("*").eq("subscription_active", True).execute()
+    resp = db.table("tenants").select("*").eq("subscription_active", True).in_("status", ["active", "trial"]).execute()
     tenants = resp.data or []
     
     log.info("job_subscription_renewal_check_start", count=len(tenants))

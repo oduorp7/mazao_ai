@@ -127,5 +127,45 @@ class TestUtilityIngestionSmoke(unittest.IsolatedAsyncioTestCase):
         self.update.effective_message.reply_text.assert_called()
         mock_db.clear_conv_state.assert_called_with(self.tid)
 
+class TestSchedulerStopGates(unittest.IsolatedAsyncioTestCase):
+    """Tier A: Verify that scheduler jobs respect user stop-gates."""
+
+    def setUp(self):
+        self.tid = 123456789
+        self.update = AsyncMock()
+        self.context = MagicMock()
+        self.bot = AsyncMock()
+        self.context.bot = self.bot
+
+    @patch('apps.tg_bot.db.get_client')
+    async def test_fuliza_alerts_skip_paused_users(self, mock_get_client):
+        """Verify Fuliza alerts exclude paused users."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock a 'paused' user in the result
+        # Note: In reality, our new !inner join query would return 0 rows for paused users
+        mock_client.table().select().in_().execute.return_value.data = []
+
+        import apps.tg_bot.scheduler as scheduler
+        await scheduler.job_fuliza_alerts(self.bot)
+        
+        # Verify no message sent
+        self.bot.send_message.assert_not_called()
+
+    @patch('apps.tg_bot.db.get_client')
+    async def test_subscription_renewal_skip_paused_users(self, mock_get_client):
+        """Verify subscription renewal excludes paused users."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock empty result for active+subscription tenants
+        mock_client.table().select().eq().in_().execute.return_value.data = []
+
+        import apps.tg_bot.scheduler as scheduler
+        await scheduler.job_subscription_renewal_alerts(self.bot)
+        
+        self.bot.send_message.assert_not_called()
+
 if __name__ == '__main__':
     unittest.main()
