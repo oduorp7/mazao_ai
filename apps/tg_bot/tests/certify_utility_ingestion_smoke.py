@@ -127,6 +127,68 @@ class TestUtilityIngestionSmoke(unittest.IsolatedAsyncioTestCase):
         self.update.effective_message.reply_text.assert_called()
         mock_db.clear_conv_state.assert_called_with(self.tid)
 
+class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
+    """Tier A: Verify Fuliza input standardization (P17-T5)."""
+
+    def setUp(self):
+        self.tid = 123456789
+        self.update = AsyncMock()
+        self.update.effective_user.id = self.tid
+        self.update.effective_chat.id = self.tid
+        self.update.effective_message = AsyncMock()
+        self.update.message = self.update.effective_message
+        self.context = MagicMock()
+        self.context.user_data = {}
+        self.tenant = {"id": "test-uuid", "plan": "pro"}
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_fuliza_full_sms_parsing(self, mock_reply, mock_db):
+        """Verify Full SMS format extracts all fields correctly."""
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        
+        self.update.effective_message.text = "Code: UDOL822FF5\nFuliza Amount: 191.57\nFee: 1.92\nTotal: 193.49\nOutstanding: 193.49\nDue: 24/05/2026"
+        
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        
+        # Verify db insert was called with all fields
+        insert_args = mock_db.get_client().table().insert.call_args[0][0]
+        self.assertEqual(insert_args["code"], "UDOL822FF5")
+        self.assertEqual(insert_args["amount_borrowed"], 191.57)
+        self.assertEqual(insert_args["access_fee"], 1.92)
+        self.assertEqual(insert_args["total_deducted"], 193.49)
+        self.assertEqual(insert_args["balance"], 193.49)
+        
+        # Verify reply contains extra details
+        mock_reply.assert_called()
+        reply_text = mock_reply.call_args[0][1]
+        self.assertIn("🧾 *Code:* UDOL822FF5", reply_text)
+        self.assertIn("💸 *Borrowed:* KES 191.57", reply_text)
+        self.assertIn("📈 *Fee:* KES 1.92", reply_text)
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_fuliza_quick_entry_parsing(self, mock_reply, mock_db):
+        """Verify Quick Entry format works."""
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        
+        self.update.effective_message.text = "191.57 24/05/2026 193.49"
+        
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        
+        insert_args = mock_db.get_client().table().insert.call_args[0][0]
+        self.assertEqual(insert_args["amount_borrowed"], 191.57)
+        self.assertEqual(insert_args["balance"], 193.49)
+        self.assertNotIn("code", insert_args)
+        
+        mock_reply.assert_called()
+        reply_text = mock_reply.call_args[0][1]
+        self.assertIn("💸 *Borrowed:* KES 191.57", reply_text)
+
 class TestSchedulerStopGates(unittest.IsolatedAsyncioTestCase):
     """Tier A: Verify that scheduler jobs respect user stop-gates."""
 

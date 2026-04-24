@@ -155,6 +155,10 @@ CREATE TABLE IF NOT EXISTS gas_entries (
 CREATE TABLE IF NOT EXISTS fuliza_entries (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    code            VARCHAR(50),
+    amount_borrowed NUMERIC,
+    access_fee      NUMERIC,
+    total_deducted  NUMERIC,
     balance         NUMERIC NOT NULL,
     due_date        DATE NOT NULL,
     created_at      TIMESTAMPTZ DEFAULT NOW()

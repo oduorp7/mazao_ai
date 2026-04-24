@@ -2318,31 +2318,74 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
     if state == "awaiting_fuliza":
-        # P10-T1: Regex parse failure check
+        # P17-T5: Multi-strategy Fuliza Parsing
+        balance, due_date, code, amount_borrowed, fee, total_deducted = None, None, None, None, None, None
+        d_str = None
+        
+        # Strategy 1: Full SMS
+        m_code = re.search(r"Code:\s*([A-Z0-9]+)", text, re.IGNORECASE)
+        m_amt = re.search(r"Fuliza Amount:\s*([\d,\.]+)", text, re.IGNORECASE)
+        m_fee = re.search(r"Fee:\s*([\d,\.]+)", text, re.IGNORECASE)
+        m_total = re.search(r"Total:\s*([\d,\.]+)", text, re.IGNORECASE)
+        m_out = re.search(r"Outstanding:\s*([\d,\.]+)", text, re.IGNORECASE)
+        m_due = re.search(r"Due:\s*(\d{1,2}/\d{1,2}/\d{4})", text, re.IGNORECASE)
+        
+        # Strategy 2: Quick Entry (Amount Date Outstanding)
+        m_quick = re.search(r"^\s*([\d,\.]+)\s+(\d{1,2}/\d{1,2}/\d{4})\s+([\d,\.]+)\s*$", text)
+        
+        # Strategy 3: Legacy Fallback
         bal_match = re.search(r"KES\s*([\d,]+(?:\.\d+)?)", text, re.IGNORECASE)
         date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{2,4})|(\d{4}-\d{1,2}-\d{1,2})", text)
         
-        if not bal_match or not date_match:
+        if m_out and m_due:
+            balance = float(m_out.group(1).replace(",", ""))
+            d_str = m_due.group(1)
+            code = m_code.group(1) if m_code else None
+            amount_borrowed = float(m_amt.group(1).replace(",", "")) if m_amt else None
+            fee = float(m_fee.group(1).replace(",", "")) if m_fee else None
+            total_deducted = float(m_total.group(1).replace(",", "")) if m_total else None
+        elif m_quick:
+            amount_borrowed = float(m_quick.group(1).replace(",", ""))
+            d_str = m_quick.group(2)
+            balance = float(m_quick.group(3).replace(",", ""))
+        elif bal_match and date_match:
+            balance = float(bal_match.group(1).replace(",", ""))
+            d_str = date_match.group(0)
+        else:
             await _reply(update, M.FULIZA_PARSE_FAILED)
             return
             
         try:
-            balance = float(bal_match.group(1).replace(",", ""))
-            d_str = date_match.group(0)
             fmt = "%d/%m/%Y" if "/" in d_str else "%Y-%m-%d"
             due_date = datetime.strptime(d_str, fmt).date()
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+            
+            insert_data = {
+                "tenant_id": str(tenant["id"]),
+                "balance": balance,
+                "due_date": due_date.isoformat(),
+            }
+            if code: insert_data["code"] = code
+            if amount_borrowed is not None: insert_data["amount_borrowed"] = amount_borrowed
+            if fee is not None: insert_data["access_fee"] = fee
+            if total_deducted is not None: insert_data["total_deducted"] = total_deducted
+            
             await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: db.get_client().table("fuliza_entries").insert({
-                    "tenant_id": str(tenant["id"]),
-                    "balance": balance,
-                    "due_date": due_date.isoformat()
-                }).execute()
+                lambda: db.get_client().table("fuliza_entries").insert(insert_data).execute()
             )
+            
             days_left = (due_date - datetime.utcnow().date()).days
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            
+            details = ""
+            if code: details += f"🧾 *Code:* {code}\n"
+            if amount_borrowed: details += f"💸 *Borrowed:* KES {amount_borrowed:,.2f}\n"
+            if fee: details += f"📈 *Fee:* KES {fee:,.2f}\n"
+            if details: details += "\n"
+                
             await _reply(update, M.FULIZA_PARSED_CONFIRMATION.format(
+                details=details,
                 balance=balance,
                 due_date=due_date.strftime("%d %b %Y"),
                 days_until_due=days_left

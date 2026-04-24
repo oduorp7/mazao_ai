@@ -538,21 +538,27 @@ To log a refill later, use /gas.
 """
 
 FULIZA_SMS_PROMPT = """
-💸 *Fuliza SMS Tracker*
-Please forward your Safaricom Fuliza balance SMS here.
+💳 *Fuliza Entry*
 
-Example: `Your Fuliza balance is KES 450.00. Please pay by 25/04/2026...`
+*Option 1:* Paste full Fuliza SMS (recommended).
+Example:
+`Code: UDOL822FF5
+Fuliza Amount: 191.57
+Fee: 1.92
+Total: 193.49
+Outstanding: 193.49
+Due: 24/05/2026`
+
+*Option 2:* Quick entry (`amount due_date outstanding`):
+Example: `191.57 24/05/2026 193.49`
 """
 
 FULIZA_PARSED_CONFIRMATION = """
-✅ *Fuliza SMS Parsed*
-I've recorded your outstanding loan:
-
-💰 *Balance:* KES {balance:,.2f}
+✅ *Fuliza Recorded*
+{details}
+💰 *Outstanding:* KES {balance:,.2f}
 📅 *Due Date:* {due_date}
 ⏳ *Time left:* {days_until_due} days
-
-Note: Fuliza attracts a 1.0% daily administrative fee.
 """
 
 
