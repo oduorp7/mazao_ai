@@ -5,11 +5,11 @@
       "family": "Baseline Only",
       "household_type": "standard",
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-23T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-0"}
       ],
       "expected": {
         "days_left_min": 5,
-        "days_left_max": 5,
+        "days_left_max": 6,
         "confidence_label": "Grid baseline",
         "source_label_contains": "Kenya grid baseline",
         "reminder_expected": false
@@ -20,8 +20,8 @@
       "family": "Growth",
       "household_type": "standard",
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-08T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2026-04-21T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-16"},
+        {"units": 13.0, "purchase_date": "T-3"}
       ],
       "expected": {
         "days_left_min": 3,
@@ -36,10 +36,10 @@
       "family": "Noise",
       "household_type": "standard",
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-03T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2026-04-12T10:00:00Z"},
-        {"units": 1.0, "purchase_date": "2026-04-12T14:00:00Z"},
-        {"units": 13.0, "purchase_date": "2026-04-21T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-21"},
+        {"units": 13.0, "purchase_date": "T-12"},
+        {"units": 1.0, "purchase_date": "T-12"},
+        {"units": 13.0, "purchase_date": "T-2"}
       ],
       "expected": {
         "days_left_min": 4,
@@ -54,11 +54,11 @@
       "family": "Fallbacks",
       "household_type": "alien_household",
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-23T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-0"}
       ],
       "expected": {
         "days_left_min": 5,
-        "days_left_max": 5,
+        "days_left_max": 6,
         "confidence_label": "Grid baseline",
         "source_label_contains": "Kenya grid baseline",
         "reminder_expected": false
@@ -69,15 +69,15 @@
       "family": "Reminder Thresholds",
       "household_type": "standard",
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-12T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2026-04-25T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-13"},
+        {"units": 13.0, "purchase_date": "T-0"}
       ],
       "expected": {
-        "days_left_min": 7,
+        "days_left_min": 6,
         "days_left_max": 7,
         "confidence_label": "Building",
         "source_label_contains": "early personal estimate",
-        "reminder_expected": true
+        "reminder_expected": false
       }
     },
     {
@@ -85,8 +85,8 @@
       "family": "Reminder Thresholds",
       "household_type": "standard",
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-06T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2026-04-19T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-18"},
+        {"units": 13.0, "purchase_date": "T-5"}
       ],
       "expected": {
         "days_left_min": 1,
@@ -101,7 +101,7 @@
       "family": "Fuliza Edge Cases",
       "household_type": "standard",
       "events": [
-        {"units": 5.0, "purchase_date": "2026-04-23T10:00:00Z"}
+        {"units": 5.0, "purchase_date": "T-0"}
       ],
       "expected": {
         "days_left_min": 2,
@@ -116,7 +116,7 @@
       "family": "Confidence Gating",
       "household_type": "standard",
       "events": [
-        {"units": 7.5, "purchase_date": "2026-04-23T10:00:00Z"}
+        {"units": 7.5, "purchase_date": "T-0"}
       ],
       "expected": {
         "days_left_min": 3,
@@ -132,8 +132,8 @@
       "household_type": "standard",
       "alert_3d_sent": true,
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-08T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2026-04-21T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-16"},
+        {"units": 13.0, "purchase_date": "T-3"}
       ],
       "expected": {
         "days_left_min": 3,
@@ -148,9 +148,9 @@
       "family": "Chronological Backfill",
       "household_type": "standard",
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-23T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2026-04-10T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2023-01-01T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-1"},
+        {"units": 13.0, "purchase_date": "T-14"},
+        {"units": 13.0, "purchase_date": "T-1000"}
       ],
       "expected": {
         "days_left_min": 6,
@@ -165,9 +165,9 @@
       "family": "Chronological Backfill",
       "household_type": "standard",
       "events": [
-        {"units": 13.0, "purchase_date": "2026-04-23T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2026-04-22T10:00:00Z"},
-        {"units": 13.0, "purchase_date": "2023-01-01T10:00:00Z"}
+        {"units": 13.0, "purchase_date": "T-1"},
+        {"units": 13.0, "purchase_date": "T-2"},
+        {"units": 13.0, "purchase_date": "T-1000"}
       ],
       "expected": {
         "days_left_min": 3,

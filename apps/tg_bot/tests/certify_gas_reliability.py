@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # Add parent directories to path to allow imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
@@ -9,6 +9,18 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from apps.agent import estimator
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), 'fixtures/gas_scenarios.json')
+
+def resolve_date(token: str):
+    """Resolves relative date tokens like T-0, T-7 to ISO strings."""
+    if not isinstance(token, str) or not token.startswith("T-"):
+        return token
+    try:
+        days = int(token.split("-")[1])
+        # We use UTC for stability
+        dt = datetime.now(timezone.utc) - timedelta(days=days)
+        return dt.isoformat().replace("+00:00", "Z")
+    except:
+        return token
 
 def run_certification():
     print("🚀 Starting Mazao Gas Reliability Certification...")
@@ -36,7 +48,10 @@ def run_certification():
         print(f"\n[Scenario: {sid}] ({family})")
         
         # Prepare history format for estimator
-        history = [{"units": float(e["amount_kg"]), "purchase_date": e["purchase_date"]} for e in events]
+        history = [
+            {"units": float(e["amount_kg"]), "purchase_date": resolve_date(e["purchase_date"])} 
+            for e in events
+        ]
         # Sort history desc (most recent first) as required by estimator
         history.sort(key=lambda x: x["purchase_date"], reverse=True)
         

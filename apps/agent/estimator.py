@@ -1,6 +1,7 @@
 import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
+import math as _math
 
 POPULATION_BASELINES = {
     "basic": 0.8,
@@ -51,13 +52,21 @@ def get_gas_population_baseline(household_type: str) -> float:
         return GAS_POPULATION_BASELINES["standard"]
     return GAS_POPULATION_BASELINES.get(household_type.lower(), GAS_POPULATION_BASELINES["standard"])
 
+def calculate_days_remaining(units: float, daily_rate: float) -> int:
+    """
+    Authoritative Mazao AI rounding policy for days remaining.
+    Uses CEIL to ensure even a fraction of a day is shown as 1 day left.
+    """
+    if daily_rate <= 0:
+        return 0
+    return int(_math.ceil(units / daily_rate))
+
 def get_gas_projection_state(history: List[Dict], h_type: str, refill_kg: float = 0) -> Dict:
     """Calculates burn rate and depletion projection for gas.
     
     If refill_kg > 0, it assumes a refill was just performed today.
     Otherwise, it calculates remaining days based on the latest historical entry.
     """
-    import math as _math
     n = len(history)
     
     # Baseline & Personal Rate
@@ -71,7 +80,7 @@ def get_gas_projection_state(history: List[Dict], h_type: str, refill_kg: float 
     
     if refill_kg > 0:
         # Scenario A: Just refilled today
-        days_rem = int(_math.ceil(refill_kg / daily_rate))
+        days_rem = calculate_days_remaining(refill_kg, daily_rate)
     elif n > 0:
         # Scenario B: Standing status from history
         # P17-T1F: Stack same-day inventory to handle top-ups/multi-cylinder refills
@@ -96,7 +105,7 @@ def get_gas_projection_state(history: List[Dict], h_type: str, refill_kg: float 
             days_since = (datetime.now() - l_date).days
             
         total_days = stacked_units / daily_rate
-        days_rem = int(_math.ceil(total_days - days_since))
+        days_rem = calculate_days_remaining(stacked_units - (daily_rate * days_since), daily_rate)
     else:
         # Scenario C: No data
         return {"n": 0, "daily_rate": pop_rate, "days_remaining": 0, "depletion_date": "N/A", "confidence": CONFIDENCE_LABELS["0-1"]}
@@ -318,3 +327,27 @@ def get_gas_source_label(n_readings: int, household_type: str) -> str:
     if "{h_type}" in label:
         label = label.format(h_type=household_type.capitalize())
     return label
+
+def get_cost_breakdown(amount_paid: float, tariff: str = "D1", actual_tkn: Optional[float] = None) -> Dict:
+    """
+    Calculates electricity vs taxes breakdown for Kenya Power tokens.
+    
+    P17-T1-FIX: Correct D1 split is 52.5% electricity. 
+    Fallbacks: D1=52.5%, others (D2/D3)=50%.
+    Actual TknAmt from DB always takes precedence if available.
+    """
+    if actual_tkn and actual_tkn > 0:
+        elec = actual_tkn
+        taxes = amount_paid - elec
+    else:
+        # P17-T1-FIX: Derived from real token data (KES 525.26 / 1000)
+        # Never use hardcoded 37/63 split.
+        ratio = 0.525 if "D1" in tariff.upper() else 0.50
+        elec = amount_paid * ratio
+        taxes = amount_paid - elec
+        
+    return {
+        "electricity": round(elec, 2),
+        "taxes": round(taxes, 2),
+        "percentage": round((elec / amount_paid * 100), 1) if amount_paid > 0 else 0
+    }

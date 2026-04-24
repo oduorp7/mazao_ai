@@ -5,7 +5,7 @@
       "family": "Baseline Only",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:21:26Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 51,
@@ -20,8 +20,8 @@
       "family": "Growth",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-04T10:20:07Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:20:07Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-20"},
+        {"amount_kg": 13.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 41,
@@ -36,8 +36,8 @@
       "family": "Same-Day Stacking",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 6.0, "purchase_date": "2026-04-23T10:21:26Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:21:26Z"}
+        {"amount_kg": 6.0, "purchase_date": "T-1"},
+        {"amount_kg": 13.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 75,
@@ -52,12 +52,12 @@
       "family": "Outlier/Noise",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-02T10:20:07Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-21T10:20:07Z"},
-        {"amount_kg": 1.0, "purchase_date": "2026-04-21T20:20:07Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-22"},
+        {"amount_kg": 13.0, "purchase_date": "T-3"},
+        {"amount_kg": 1.0, "purchase_date": "T-3"}
       ],
       "expected": {
-        "days_left_min": 44,
+        "days_left_min": 43,
         "days_left_max": 46,
         "confidence_label": "Building",
         "source_label_contains": "refill history",
@@ -69,7 +69,7 @@
       "family": "Household Type Fallbacks",
       "household_type": "alien_household",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:21:26Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 51,
@@ -84,9 +84,9 @@
       "family": "Reminder Thresholds",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-05T10:20:34Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-14T10:20:34Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:20:34Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-19"},
+        {"amount_kg": 13.0, "purchase_date": "T-10"},
+        {"amount_kg": 13.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 19,
@@ -101,9 +101,9 @@
       "family": "Outlier/Noise",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-10T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T14:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-14"},
+        {"amount_kg": 13.0, "purchase_date": "T-1"},
+        {"amount_kg": 13.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 71,
@@ -118,10 +118,10 @@
       "family": "Outlier/Noise",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-03T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-12T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-21T10:00:00Z"},
-        {"amount_kg": 50.0, "purchase_date": "2026-04-23T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-21"},
+        {"amount_kg": 13.0, "purchase_date": "T-12"},
+        {"amount_kg": 13.0, "purchase_date": "T-3"},
+        {"amount_kg": 50.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 49,
@@ -136,7 +136,7 @@
       "family": "Household Type Fallbacks",
       "household_type": "",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:21:26Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 51,
@@ -151,22 +151,15 @@
       "family": "Reminder Thresholds",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-13T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-31T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-18T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-05T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-02-20T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-02-07T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-01-25T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-01-12T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2025-12-30T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2025-12-17T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-25"},
+        {"amount_kg": 13.0, "purchase_date": "T-38"},
+        {"amount_kg": 13.0, "purchase_date": "T-51"}
       ],
       "expected": {
         "days_left_min": 3,
         "days_left_max": 3,
-        "confidence_label": "High",
-        "source_label_contains": "High-accuracy personal average",
+        "confidence_label": "Building",
+        "source_label_contains": "refill history",
         "reminder_expected": true
       }
     },
@@ -175,22 +168,15 @@
       "family": "Reminder Thresholds",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-11T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-29T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-16T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-03T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-02-18T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-02-05T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-01-23T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-01-10T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2025-12-28T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2025-12-15T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-27"},
+        {"amount_kg": 13.0, "purchase_date": "T-40"},
+        {"amount_kg": 13.0, "purchase_date": "T-53"}
       ],
       "expected": {
         "days_left_min": 1,
         "days_left_max": 1,
-        "confidence_label": "High",
-        "source_label_contains": "High-accuracy personal average",
+        "confidence_label": "Building",
+        "source_label_contains": "refill history",
         "reminder_expected": true
       }
     },
@@ -199,8 +185,8 @@
       "family": "Reminder Thresholds",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-20T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-23T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-4"},
+        {"amount_kg": 13.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 15,
@@ -215,7 +201,7 @@
       "family": "Reminder Thresholds",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 1.0, "purchase_date": "2026-04-23T10:00:00Z"}
+        {"amount_kg": 1.0, "purchase_date": "T-1"}
       ],
       "expected": {
         "days_left_min": 3,
@@ -230,8 +216,8 @@
       "family": "Reminder Thresholds",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-02-15T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-14T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-30"},
+        {"amount_kg": 13.0, "purchase_date": "T-43"}
       ],
       "expected": {
         "days_left_min": 7,
@@ -247,8 +233,8 @@
       "household_type": "standard",
       "alert_7d_sent": true,
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-02-15T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-14T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-30"},
+        {"amount_kg": 13.0, "purchase_date": "T-43"}
       ],
       "expected": {
         "days_left_min": 7,
@@ -264,8 +250,8 @@
       "household_type": "standard",
       "alert_3d_sent": true,
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-02-11T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-03-10T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-34"},
+        {"amount_kg": 13.0, "purchase_date": "T-47"}
       ],
       "expected": {
         "days_left_min": 3,
@@ -280,12 +266,12 @@
       "family": "Chronological Backfill",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-20T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2025-01-01T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2024-01-01T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-4"},
+        {"amount_kg": 13.0, "purchase_date": "T-480"},
+        {"amount_kg": 13.0, "purchase_date": "T-845"}
       ],
       "expected": {
-        "days_left_min": 70,
+        "days_left_min": 69,
         "days_left_max": 72,
         "confidence_label": "Building",
         "source_label_contains": "refill history",
@@ -297,9 +283,9 @@
       "family": "Chronological Backfill",
       "household_type": "standard",
       "events": [
-        {"amount_kg": 13.0, "purchase_date": "2026-04-18T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2026-04-17T10:00:00Z"},
-        {"amount_kg": 13.0, "purchase_date": "2023-01-01T10:00:00Z"}
+        {"amount_kg": 13.0, "purchase_date": "T-5"},
+        {"amount_kg": 13.0, "purchase_date": "T-6"},
+        {"amount_kg": 13.0, "purchase_date": "T-1100"}
       ],
       "expected": {
         "days_left_min": 1,

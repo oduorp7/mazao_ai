@@ -570,7 +570,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             msg = M.LANGUAGE_SET_EN if lang == "en" else M.LANGUAGE_SET_SW
             
             # ── Warm Onboarding Finish (P9-T5) ───────────────────────────
-            trial_ends = (datetime.utcnow() + timedelta(days=14)).strftime("%d %b %Y")
+            trial_ends = (datetime.utcnow() + timedelta(days=7)).strftime("%d %b %Y")
             badge = M.FOUNDING_BADGE if tenant.get("founding_member") else ""
             
             if tenant.get("user_type") == "individual":
@@ -709,16 +709,14 @@ async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     is_founding = tenant.get("founding_member", False)
     
-    keyboard = [
-        [
-            InlineKeyboardButton("🔹 Mtu Wenyewe (KES 300/mo)" if is_founding else "🔹 Mtu Wenyewe (KES 500/mo)", callback_data="upgrade_mtu"),
-        ],
-        [
-            InlineKeyboardButton("🔸 Biashara (KES 1,500/mo)" if is_founding else "🔸 Biashara (KES 2,500/mo)", callback_data="upgrade_biashara"),
-        ]
-    ]
+    msg = M.UPGRADE_PROMPT.format(core_price=149, pro_price=399)
+    if is_founding:
+        msg = f"{M.FOUNDING_BADGE}\n\n{msg}"
     
-    msg = M.UPGRADE_PROMPT.format(mtu_price=300 if is_founding else 500, biashara_price=1500 if is_founding else 2500)
+    keyboard = [
+        [InlineKeyboardButton("🔹 Upgrade to Core (KES 149)", callback_data="upgrade_core")],
+        [InlineKeyboardButton("🔸 Upgrade to Pro (KES 399)", callback_data="upgrade_pro")],
+    ]
     if is_founding:
         msg = f"{M.FOUNDING_BADGE}\n\n{msg}"
         
@@ -1060,8 +1058,7 @@ async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             log.info("carry_over_applied", new=units, remaining=round(remaining, 2), total=round(total_units_for_projection, 2))
 
         # P16-FIX-FINAL: Enterprise Rounding
-        import math as _math
-        days_remaining = int(_math.ceil(total_units_for_projection / daily_rate))
+        days_remaining = estimator.calculate_days_remaining(total_units_for_projection, daily_rate)
         if total_units_for_projection > 0 and days_remaining == 0:
             days_remaining = 1
         depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
@@ -1178,6 +1175,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     mime = doc.mime_type
+    from pathlib import Path
     ext = Path(doc.file_name).suffix.lower()
     
     fmt = None
@@ -1325,8 +1323,8 @@ async def _run_pipeline_and_reply(
     tid = tenant["telegram_id"]
 
     try:
-        from pipeline import run_pipeline
-        from state import RawTransaction, TransactionType
+        from apps.agent.pipeline import run_pipeline
+        from apps.agent.state import RawTransaction, TransactionType
 
         # Use passed transactions or fall back to live transactions (P6-T6)
         txs = custom_transactions
@@ -1543,7 +1541,7 @@ async def _get_electricity_projection(tid: int, tenant: Dict) -> Dict:
         days_since = (now - l_date).days
         # Units remaining = units - (rate * days_since)
         units_remaining = max(0, latest["units"] - (daily_rate * days_since))
-        days_rem = int(_math.ceil(units_remaining / daily_rate))
+        days_rem = estimator.calculate_days_remaining(units_remaining, daily_rate)
         depletion_date = (now + timedelta(days=max(0, days_rem))).strftime("%d %b %Y")
         
         return {
@@ -1638,8 +1636,6 @@ async def _get_gas_projection(tid: int, tenant: Dict, refill_kg: float = 0) -> D
     If refill_kg > 0, it assumes a refill was just performed today.
     Otherwise, it calculates remaining days based on the latest historical entry.
     """
-    import math as _math
-    
     gas_resp = await asyncio.get_event_loop().run_in_executor(
         None,
         lambda: db.get_client().table("gas_entries")
@@ -1664,7 +1660,7 @@ async def _get_gas_projection(tid: int, tenant: Dict, refill_kg: float = 0) -> D
     
     if refill_kg > 0:
         # Scenario A: Just refilled today
-        days_rem = int(_math.ceil(refill_kg / daily_rate))
+        days_rem = estimator.calculate_days_remaining(refill_kg, daily_rate)
     elif n > 0:
         # Scenario B: Standing status from history
         latest = history[0]
@@ -1672,8 +1668,7 @@ async def _get_gas_projection(tid: int, tenant: Dict, refill_kg: float = 0) -> D
         if l_date.tzinfo is None: l_date = l_date.replace(tzinfo=timezone.utc)
         
         days_since = (now - l_date).days
-        total_days = latest["units"] / daily_rate
-        days_rem = int(_math.ceil(total_days - days_since))
+        days_rem = estimator.calculate_days_remaining(latest["units"] - (daily_rate * days_since), daily_rate)
     else:
         # Scenario C: No data
         return {"n": 0, "daily_rate": pop_rate, "days_remaining": 0, "depletion_date": "N/A", "history": []}
@@ -2007,10 +2002,13 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     onboarded_count = sum(1 for t in tenants if t.get("onboarding_completed"))
     completion_rate = (onboarded_count / total * 100) if total > 0 else 0
     
-    # 2. Plan Breakdown
-    plans = {"free": 0, "mtu_wenyewe": 0, "biashara": 0, "trial": 0}
+    # 2. Plan Breakdown (P17-T4F: Align with Core/Pro)
+    plans = {"free": 0, "core": 0, "pro": 0, "trial": 0}
     for t in tenants:
         p = t.get("plan", "free")
+        # Map legacy names if they exist in DB
+        if p == "biashara": p = "pro"
+        elif p == "mtu_wenyewe": p = "core"
         plans[p] = plans.get(p, 0) + 1
         
     # 3. Active Trials
@@ -2041,14 +2039,14 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     report = (
         "👑 *Chief Engineer Dashboard*\n\n"
-        f"� *Onboarding (Funnel):*\n"
+        f"🚀 *Onboarding (Funnel):*\n"
         f"├─ Started: {total}\n"
         f"├─ Completed: {onboarded_count}\n"
         f"└─ Rate: {completion_rate:.1f}%\n\n"
         f"👥 *Tenants by Plan:*\n"
-        f"├─ Biashara: {plans['biashara']}\n"
-        f"├─ Mtu Wenyewe: {plans['mtu_wenyewe']}\n"
-        f"└─ Free/Trial: {plans['trial'] + plans['free']}\n\n"
+        f"├─ Pro: {plans.get('pro', 0)}\n"
+        f"├─ Core: {plans.get('core', 0)}\n"
+        f"└─ Free/Trial: {plans.get('trial', 0) + plans.get('free', 0)}\n\n"
         f"⏳ *Trials:* {len(trial_data)} active (Avg: {avg_trial:.1f} days)\n"
         f"💰 *Revenue (MTD):* KES {revenue:,.0f} ({payments_count} txns)\n"
         f"🎯 *Conversion Targets:* {expired_count} lapsed"
@@ -2241,8 +2239,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             
-            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-            
             # ── Gas Estimation Logic (P17-T1D: Refactored) ───────────────────
             proj = await _get_gas_projection(tid, tenant, refill_kg=amount_kg)
             
@@ -2379,19 +2375,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         tenant_attempts.append(now)
         upgrade_rate_limit[tid] = tenant_attempts
 
-        pending_plan = conv.get("data", {}).get("pending_plan", "mtu_wenyewe")
+        pending_plan = conv.get("data", {}).get("pending_plan", "core")
         is_founding = tenant.get("founding_member", False)
         has_referral_discount = tenant.get("referral_discount", False)
         
-        if is_founding:
-            amount = 1500 if pending_plan == "biashara" else 300
+        # P17-T4F: Align with new pricing
+        if pending_plan == "pro":
+            amount = 399
         else:
-            amount = 2500 if pending_plan == "biashara" else 500
+            amount = 149
             
         if has_referral_discount:
             amount = amount * 0.8
             
-        plan_name = "Mtu Wenyewe" if amount in (240, 300, 400, 500) else "Biashara"
+        plan_name = "Core" if amount < 300 else "Pro"
         
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"phone_number": clean_phone}))
         account_ref = f"MAZAO-{str(tenant['id'])[:8]}"
@@ -2472,4 +2469,3 @@ BOT_COMMANDS = [
     BotCommand("stop",          "Pause daily bot alerts"),
     BotCommand("resume",        "Resume daily bot alerts"),
 ]
-

@@ -1,13 +1,25 @@
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # Add parent directory to path to import estimator
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from apps.agent import estimator
 
 FIXTURE_PATH = "apps/tg_bot/tests/fixtures/electricity_scenarios.json"
+
+def resolve_date(token: str):
+    """Resolves relative date tokens like T-0, T-7 to ISO strings."""
+    if not isinstance(token, str) or not token.startswith("T-"):
+        return token
+    try:
+        days = int(token.split("-")[1])
+        # We use UTC for stability
+        dt = datetime.now(timezone.utc) - timedelta(days=days)
+        return dt.isoformat().replace("+00:00", "Z")
+    except:
+        return token
 
 def run_certification():
     print("🚀 Starting Mazao Electricity & Cross-Utility Certification...")
@@ -39,7 +51,10 @@ def run_certification():
 
         try:
             # Prepare history format for estimator
-            history = [{"units": float(e["units"]), "purchase_date": e["purchase_date"]} for e in events]
+            history = [
+                {"units": float(e["units"]), "purchase_date": resolve_date(e["purchase_date"])} 
+                for e in events
+            ]
             history.sort(key=lambda x: x["purchase_date"], reverse=True)
             
             # 1. Utility-Specific Logic (Electricity vs Gas)
@@ -56,12 +71,13 @@ def run_certification():
             # Calculate days_remaining exactly like scheduler.py
             latest_entry = history[0]
             now = datetime.now(timezone.utc)
-            l_date = datetime.fromisoformat(latest_entry["purchase_date"].replace("Z", "+00:00"))
+            l_date_str = latest_entry["purchase_date"]
+            l_date = datetime.fromisoformat(l_date_str.replace("Z", "+00:00"))
             if l_date.tzinfo is None: l_date = l_date.replace(tzinfo=timezone.utc)
             
             days_since = (now - l_date).days
             units_remaining = max(0, float(latest_entry["units"]) - (daily_rate * days_since))
-            days_left = int(units_remaining / daily_rate)
+            days_left = estimator.calculate_days_remaining(units_remaining, daily_rate)
             
             # 2. Assertions
             # Days Remaining Range

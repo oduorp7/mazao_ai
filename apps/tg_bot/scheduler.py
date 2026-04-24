@@ -397,7 +397,7 @@ async def job_token_depletion_check(bot: Bot) -> None:
             
             days_since = (now - l_date).days
             units_remaining = max(0, float(entry["units"]) - (daily_rate * days_since))
-            days_rem = int(units_remaining / daily_rate)
+            days_rem = estimator.calculate_days_remaining(units_remaining, daily_rate)
             
             # 3. Check Thresholds (NORMALIZED Rule: [7, 3, 1] AND not Grid baseline)
             alert_msg = None
