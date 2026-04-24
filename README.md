@@ -14,6 +14,7 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 *   **Real-time M-Pesa (Daraja C2B)**: Native Safaricom integration (Sandbox live, Production pending Paybill approval).
 *   **Multi-language**: Seamless switching between English and Swahili.
 *   **Robust Trial Management**: Automated 14-day trials for all new users.
+*   **Superadmin Bypass**: Centralized FAANG-grade testing layer allowing authorized team members unrestricted access to all gated features while preserving strict subscription rules for normal users.
 
 ## �️ Architecture & Knowledge Base
 
