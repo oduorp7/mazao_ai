@@ -68,6 +68,18 @@ KPLC_TARIFF_TIERS = {
     "D3": {"max_rate": 99.99, "label": "High Consumption (D3)",  "description": "Heavy usage > 100 units/month"},
 }
 
+# ── Plan Normalization (P17-T4I) ─────────────────────────────────────────────
+NORM_PLAN_MAP = {
+    'biashara': 'pro',
+    'mtu_wenyewe': 'core',
+    'hustler': 'free',
+    'pro': 'pro',
+    'core': 'core',
+    'free': 'free',
+    'trial': 'trial'
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 # ── KPLC SMS helpers (P16-FIX-FINAL) ─────────────────────────────────────────
@@ -2002,14 +2014,13 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     onboarded_count = sum(1 for t in tenants if t.get("onboarding_completed"))
     completion_rate = (onboarded_count / total * 100) if total > 0 else 0
     
-    # 2. Plan Breakdown (P17-T4F: Align with Core/Pro)
+    # 2. Plan Breakdown (P17-T4I: Normalize Free/Trial/Core/Pro)
     plans = {"free": 0, "core": 0, "pro": 0, "trial": 0}
     for t in tenants:
         p = t.get("plan", "free")
-        # Map legacy names if they exist in DB
-        if p == "biashara": p = "pro"
-        elif p == "mtu_wenyewe": p = "core"
-        plans[p] = plans.get(p, 0) + 1
+        # Map legacy names using robust map
+        mapped_plan = NORM_PLAN_MAP.get(p, "free")
+        plans[mapped_plan] = plans.get(mapped_plan, 0) + 1
         
     # 3. Active Trials
     trials_resp = await asyncio.get_event_loop().run_in_executor(
@@ -2044,9 +2055,10 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"├─ Completed: {onboarded_count}\n"
         f"└─ Rate: {completion_rate:.1f}%\n\n"
         f"👥 *Tenants by Plan:*\n"
-        f"├─ Pro: {plans.get('pro', 0)}\n"
-        f"├─ Core: {plans.get('core', 0)}\n"
-        f"└─ Free/Trial: {plans.get('trial', 0) + plans.get('free', 0)}\n\n"
+        f"├─ Pro (KES 399): {plans.get('pro', 0)}\n"
+        f"├─ Core (KES 149): {plans.get('core', 0)}\n"
+        f"├─ Trial: {plans.get('trial', 0)}\n"
+        f"└─ Free: {plans.get('free', 0)}\n\n"
         f"⏳ *Trials:* {len(trial_data)} active (Avg: {avg_trial:.1f} days)\n"
         f"💰 *Revenue (MTD):* KES {revenue:,.0f} ({payments_count} txns)\n"
         f"🎯 *Conversion Targets:* {expired_count} lapsed"

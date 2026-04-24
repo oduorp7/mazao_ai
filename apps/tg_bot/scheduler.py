@@ -747,7 +747,7 @@ async def job_subscription_renewal_alerts(bot: Bot):
                     chat_id=tid,
                     text=M.RENEWAL_REMINDER.format(
                         days_remaining=days_left,
-                        plan_name=t.get("plan", "hustler").title(),
+                        plan_name=t.get("plan", "free").title(),
                         upgrade_link=upgrade_link
                     ),
                     parse_mode=ParseMode.MARKDOWN

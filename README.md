@@ -28,10 +28,10 @@ Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technic
 - [x] **Regression & Certification**: System-wide protection tiers, deploy gates, and Tier A flow invariants.
 - [x] **Regression & Certification**: System-wide protection tiers, deploy gates, and Tier A flow invariants.
 - **[Subscription Policy](docs/strategy/SUBSCRIPTION_POLICY.md)**: Tiered access gating:
-    - **Free (KES 0)**: Manual tracking & basic dashboard.
-    - **Core (KES 149/mo)**: Proactive alerts & utility projections.
-    - **Pro (KES 399/mo)**: AI Insights, Tips, and Anomaly Detection.
-    - **Trial (7 Days)**: Full **PRO** access for all new users.
+    - **Free**: KES 0/mo (Manual tracking only)
+    - **Core**: KES 149/mo (Proactive alerts + Utility tracking)
+    - **Pro**: KES 399/mo (AI Financial Tips + Anomaly Detection)
+    - **Trial**: 7 Days Full PRO access for new users
 
 ---
 | `/till` | Register M-Pesa Till | Business | Any |
@@ -125,7 +125,7 @@ Once the official Safaricom Paybill/Till is approved:
 
 ### First Customer Acquisition Guide
 **What to say to a business owner:**
-> "Hey [Name], I'm testing a new tool called Mazao AI that automates your M-Pesa bookkeeping and tax estimates. It's built for Kenyan SMEs. You just forward your statements or register your Till, and it handles the rest. Want to try it? I can set you up as a Founding Member (KES 300/mo instead of 500)."
+> "Hey [Name], I'm testing a new tool called Mazao AI that automates your M-Pesa bookkeeping and tax estimates. It's built for Kenyan SMEs. You just forward your statements or register your Till, and it handles the rest. Want to try it? I can set you up as a Founding Member (KES 149/mo Core or KES 399/mo Pro)."
 
 **The Demo:**
 1. Open [@MazaoAIBot](https://t.me/MazaoAIBot).

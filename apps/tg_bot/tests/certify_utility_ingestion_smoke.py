@@ -241,6 +241,87 @@ class TestTierGating(unittest.IsolatedAsyncioTestCase):
             "status": "lapsed",
             "plan": "free"
         })
+class TestAdminDashboardNormalization(unittest.IsolatedAsyncioTestCase):
+    """Tier A: Verify Admin Dashboard correctly normalizes legacy labels."""
+
+    def setUp(self):
+        self.tid = 999999999 # Admin ID
+        self.admin_id = "999999999"
+        self.update = AsyncMock()
+        self.update.effective_chat.id = self.tid
+        self.update.effective_user.id = self.tid
+        self.update.message = AsyncMock()
+        self.context = MagicMock()
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('os.getenv')
+    async def test_admin_output_normalization(self, mock_getenv, mock_db):
+        """Verify cmd_admin maps legacy values to Free/Trial/Core/Pro and splits Free/Trial."""
+        mock_getenv.return_value = self.admin_id
+        
+        # Mock mixed legacy DB state
+        mock_client = MagicMock()
+        mock_db.get_client.return_value = mock_client
+        
+        # Chainable calls must return the mock_client or another mock that leads to execute
+        mock_client.table.return_value = mock_client
+        mock_client.select.return_value = mock_client
+        mock_client.eq.return_value = mock_client
+        mock_client.gte.return_value = mock_client
+        
+        # 1. Tenants mock
+        mock_tenants_data = [
+            {"telegram_id": 1, "plan": "biashara", "onboarding_completed": True},
+            {"telegram_id": 2, "plan": "pro", "onboarding_completed": True},
+            {"telegram_id": 3, "plan": "mtu_wenyewe", "onboarding_completed": True},
+            {"telegram_id": 4, "plan": "core", "onboarding_completed": True},
+            {"telegram_id": 5, "plan": "trial", "onboarding_completed": True},
+            {"telegram_id": 6, "plan": "free", "onboarding_completed": True},
+            {"telegram_id": 7, "plan": "hustler", "onboarding_completed": True},
+        ]
+        
+        mock_res_tenants = MagicMock()
+        mock_res_tenants.data = mock_tenants_data
+        
+        mock_res_trials = MagicMock()
+        mock_res_trials.data = [{"trial_days_left": 5}]
+        
+        mock_res_rev = MagicMock()
+        mock_res_rev.data = []
+        
+        mock_res_expired = MagicMock()
+        mock_res_expired.data = []
+        
+        # Sequential returns for execute()
+        mock_client.execute.side_effect = [
+            mock_res_tenants,
+            mock_res_trials,
+            mock_res_rev,
+            mock_res_expired
+        ]
+        
+        # Patch _reply to capture the output message
+        with patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock) as mock_reply:
+            await handlers.cmd_admin(self.update, self.context)
+            
+            mock_reply.assert_called()
+            report_text = mock_reply.call_args[0][1]
+            
+            # Assert legacy labels are ABSENT
+            self.assertNotIn("biashara", report_text.lower())
+            self.assertNotIn("mtu_wenyewe", report_text.lower())
+            self.assertNotIn("hustler", report_text.lower())
+            
+            # Assert current labels are PRESENT with correct counts
+            # biashara(1) + pro(1) = Pro (2)
+            # mtu_wenyewe(1) + core(1) = Core (2)
+            # hustler(1) + free(1) = Free (2)
+            # trial(1) = Trial (1)
+            self.assertIn("Pro (KES 399): 2", report_text)
+            self.assertIn("Core (KES 149): 2", report_text)
+            self.assertIn("Trial: 1", report_text)
+            self.assertIn("Free: 2", report_text)
+
 
 if __name__ == '__main__':
     unittest.main()
