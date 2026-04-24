@@ -205,5 +205,42 @@ class TestTierGating(unittest.IsolatedAsyncioTestCase):
         from apps.tg_bot.trial import is_feature_allowed
         self.assertTrue(await is_feature_allowed(self.tid, "ai_tips"))
 
+    @patch('apps.tg_bot.trial.get_trial_status', new_callable=AsyncMock)
+    async def test_paid_gating_requires_active(self, mock_status):
+        """Paid tiers must block if subscription_active is False."""
+        # active=False in get_trial_status return dict means subscription_active=False
+        mock_status.return_value = {"active": False, "plan": "pro"}
+        from apps.tg_bot.trial import is_feature_allowed
+        self.assertFalse(await is_feature_allowed(self.tid, "ai_tips"))
+
+    @patch('apps.tg_bot.db.get_client')
+    async def test_expiry_downgrade_logic(self, mock_get_client):
+        """Verify scheduler downgrades plan to free on expiry."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        # Mock a tenant with expired sub
+        from datetime import datetime, timezone, timedelta
+        expired_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        mock_client.table().select().eq().in_().execute.return_value.data = [{
+            "id": "tenant-123",
+            "telegram_id": self.tid,
+            "subscription_expires_at": expired_date,
+            "plan": "pro",
+            "subscription_active": True,
+            "status": "active"
+        }]
+
+        from apps.tg_bot.scheduler import job_subscription_renewal_alerts
+        bot = AsyncMock()
+        await job_subscription_renewal_alerts(bot)
+        
+        # Verify DB update set plan='free'
+        mock_client.table().update.assert_any_call({
+            "subscription_active": False,
+            "status": "lapsed",
+            "plan": "free"
+        })
+
 if __name__ == '__main__':
     unittest.main()

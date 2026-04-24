@@ -377,8 +377,13 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
                     "confirmed_at": datetime.utcnow().isoformat()
                 }).eq("id", request_data["id"]).execute()
                 
-                # Determine Plan
-                new_plan = "biashara" if amount >= 2500 else "mtu_wenyewe"
+                # Determine Plan (P17-T4D Alignment)
+                if amount >= 399:
+                    new_plan = "pro"
+                elif amount >= 149:
+                    new_plan = "core"
+                else:
+                    new_plan = "free"
                 
                 # Update Tenant
                 expires_at = (datetime.utcnow() + timedelta(days=30)).isoformat()
@@ -386,8 +391,9 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
                     "plan": new_plan,
                     "subscription_active": True,
                     "subscription_expires_at": expires_at,
-                    "trial_started_at": None, # End trial logic upon payment
-                    "trial_ends_at": None
+                    "trial_started_at": None, 
+                    "trial_ends_at": None,
+                    "status": "active"
                 }).eq("id", tenant_id).execute()
                 
                 # Notify User

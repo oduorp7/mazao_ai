@@ -124,9 +124,14 @@ async def is_feature_allowed(tenant_id: str, feature: str) -> bool:
     trial_active = status["active"]
 
     # Trial plan uses TIER_TRIAL permissions if active
-    if trial_active and plan == "trial":
+    if trial_active and plan == TIER_TRIAL:
         return feature in TIER_MATRIX[TIER_TRIAL]
 
-    # Otherwise use plan-specific matrix
+    # Paid tiers (Core/Pro) require active subscription
+    sub_active = status.get("active", False) # get_trial_status returns active=True if subscription_active is True
+    if not sub_active:
+        plan = TIER_FREE
+
+    # Otherwise use plan-specific matrix (treat legacy as free)
     allowed_features = TIER_MATRIX.get(plan, TIER_MATRIX[TIER_FREE])
     return feature in allowed_features

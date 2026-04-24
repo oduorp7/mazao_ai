@@ -730,7 +730,8 @@ async def job_subscription_renewal_alerts(bot: Bot):
                 log.info("subscription_expired", telegram_id=tid)
                 db.table("tenants").update({
                     "subscription_active": False,
-                    "status": "lapsed"
+                    "status": "lapsed",
+                    "plan": "free"
                 }).eq("id", t["id"]).execute()
                 
                 await bot.send_message(
