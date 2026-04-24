@@ -328,7 +328,7 @@ async def job_trial_alerts(bot: Bot) -> None:
             if delta == 1:
                 await bot.send_message(
                     chat_id=tid,
-                    text=M.TRIAL_EXPIRY_WARNING.format(days_remaining=1),
+                    text=M.NUDGE_TRIAL_DAY_6,
                     parse_mode=ParseMode.MARKDOWN
                 )
             elif delta <= 0:
@@ -675,7 +675,7 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
         name="Subscription renewal tracking",
     )
 
-    # P17-T1E: Gas depletion alerts — 08:30 AM Kenya time
+    # P17-T4J: Gas depletion alerts — 08:30 AM Kenya time
     scheduler.add_job(
         job_gas_alerts,
         CronTrigger(hour=8, minute=30, timezone=KENYA_TZ),
@@ -684,8 +684,51 @@ def create_scheduler(bot: Bot) -> AsyncIOScheduler:
         name="Gas depletion alerts",
     )
 
+    # P17-T4J: Inactivity reactivation — 14:00 PM Kenya time
+    scheduler.add_job(
+        job_inactivity_reactivation,
+        CronTrigger(hour=14, minute=0, timezone=KENYA_TZ),
+        args=[bot],
+        id="inactivity_reactivation",
+        name="Lapsed user reactivation nudges",
+    )
+
     log.info("scheduler_configured", job_count=len(scheduler.get_jobs()))
     return scheduler
+
+
+async def job_inactivity_reactivation(bot: Bot):
+    """P17-T4J: Reactivate lapsed users with a contextual nudge."""
+    from apps.tg_bot.db import get_client
+    import apps.tg_bot.messages as M
+    
+    db_client = get_client()
+    # Find users whose subscription is inactive and are in 'lapsed' status
+    resp = await asyncio.get_event_loop().run_in_executor(
+        None, 
+        lambda: db_client.table("tenants").select("telegram_id, plan, status")
+        .eq("subscription_active", False)
+        .eq("status", "lapsed")
+        .execute()
+    )
+    
+    tenants = resp.data or []
+    log.info("inactivity_reactivation_start", count=len(tenants))
+    
+    for t in tenants:
+        tid = t["telegram_id"]
+        # P15-T1: Superadmin skip
+        if os.getenv("ADMIN_TELEGRAM_ID") and str(tid) == str(os.getenv("ADMIN_TELEGRAM_ID")):
+            continue
+            
+        try:
+            await bot.send_message(
+                chat_id=tid,
+                text=M.NUDGE_INACTIVITY_REACTIVATION,
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as e:
+            log.warning("inactivity_nudge_failed", telegram_id=tid, error=str(e))
 
 
 # ── Job 7: Subscription renewal detection (P8-T5) ───────────────────────────

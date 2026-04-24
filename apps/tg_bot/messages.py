@@ -19,7 +19,7 @@ Every morning I'll send you:
 📋 Your VAT liability estimate
 ⏰ KRA deadline reminders
 
-*14-day free trial. No card needed.*
+*7-day free trial. No card needed.*
 
 To get started, what's your business name?
 
@@ -32,7 +32,7 @@ ONBOARDING_SUCCESS_BUSINESS = """
 Welcome to the future of Kenyan bookkeeping.
 
 *Trial Status:*
-Your 14-day free trial starts now.
+Your 7-day free trial starts now.
 *Trial ends:* {trial_ends_at}
 
 *3 Things to Do Next:*
@@ -49,7 +49,7 @@ ONBOARDING_SUCCESS_INDIVIDUAL = """
 I'll track your personal KRA deadlines and SHA reminders.
 
 *Trial Status:*
-Your 14-day free trial starts now.
+Your 7-day free trial starts now.
 *Trial ends:* {trial_ends_at}
 
 Type /help anytime to see your commands.
@@ -61,7 +61,7 @@ ONBOARDING_SUCCESS_BUSINESS_SW = """
 Karibu kwenye mfumo wa kisasa wa vitabu vya biashara Kenya.
 
 *Hali ya Jaribio (Trial):*
-Jaribio lako la siku 14 linaanza sasa.
+Jaribio lako la siku 7 linaanza sasa.
 *Mwisho wa jaribio:* {trial_ends_at}
 
 *Mambo 3 ya Kufanya Sasa:*
@@ -78,7 +78,7 @@ ONBOARDING_SUCCESS_INDIVIDUAL_SW = """
 Nitafuatilia tarehe zako za mwisho za KRA na kumbusho za SHA.
 
 *Hali ya Jaribio (Trial):*
-Jaribio lako la siku 14 linaanza sasa.
+Jaribio lako la siku 7 linaanza sasa.
 *Mwisho wa jaribio:* {trial_ends_at}
 
 Andika /help wakati wowote kuona maagizo yako.
@@ -100,8 +100,8 @@ Here's what happens next:
 • I'll track your deadlines automatically
 • Reply */report* anytime to generate one now
 
-*Your 14-day free trial starts today.*
-After that: KES 2,500/month — cancel anytime.
+*Your 7-day free trial starts today.*
+After that: from KES 149/month — cancel anytime.
 
 Type /help to see all commands.\
 """
@@ -128,7 +128,7 @@ HELP = """\
 NOT_REGISTERED = """\
 👋 You haven't set up your account yet.
 
-Type /start to begin your free 14-day trial.\
+Type /start to begin your free 7-day trial.\
 """
 
 # ── Reports ───────────────────────────────────────────────────────────────────
@@ -232,14 +232,15 @@ Reply /help for the iTax step-by-step guide.\
 # ── Subscription ──────────────────────────────────────────────────────────────
 
 TRIAL_WARNING = """\
-⏳ *Your free trial ends in {days} days*
+⏳ *Your free trial ends tomorrow*
 
-After that, Mazao AI is KES 2,500/month.
+After that, Mazao AI is KES 149/month (Core) or KES 399/month (Pro).
 
-To continue, send KES 2,500 to Till *{till}*
+To continue, send KES 149 (or 399) to Till *{till}*
 with reference *MAZAO-{telegram_id}*
 
-Questions? Just message me.\
+_Refer a friend and get 20% off your next month!_
+Questions? Just message me.
 """
 
 SUBSCRIPTION_CONFIRMED = """\
@@ -252,14 +253,15 @@ Type /help for all commands.\
 """
 
 SUBSCRIPTION_LAPSED = """\
-⚠️ *Your subscription has lapsed*
+⚠️ *Premium Service Ended*
 
-Your daily reports are paused.
+Your daily reports and premium tracking have been paused. 
 
-To reactivate, send KES 2,500 to Till *{till}*
+To reactivate, send KES 149 (Core) or KES 399 (Pro) to Till *{till}*
 with reference *MAZAO-{telegram_id}*
 
-Your data is safe — reports resume within minutes of payment.\
+Your data is safe — services resume within minutes of payment.
+_Get 20% off by referring a friend!_
 """
 
 # ── Status ────────────────────────────────────────────────────────────────────
@@ -328,6 +330,18 @@ MYSTATUS_HEADER = "👤 *Personal Status — {name}*\nStatus: {status}\n\n*Upcom
 
 MYSTATUS_OBLIGATION_ROW = "{icon} *{name}* — Due {due_date}\n   {description}\n   Days left: {days_left}\n\n"
 
+MYSTATUS_ELECTRICITY_ROW = """
+⚡ *Electricity*
+Daily Rate: {daily_rate} units/day
+Depletion: {depletion_date}
+Days Left: {days_left}
+"""
+
+MYSTATUS_ELECTRICITY_EMPTY = """
+⚡ *Electricity*
+No tokens logged yet. Use /tokens to start tracking.
+"""
+
 MYSTATUS_BUSINESS_REDIRECT = "ℹ️ This command is for individual users.\n\nUse /status for your business dashboard."
 
 ASK_LANGUAGE = "🌐 *Language Preference / Mapendekezo ya Lugha*\n\nWhich language do you prefer for your reports?\nUnapendelea lugha gani kwa ripoti zako?"
@@ -394,8 +408,7 @@ Then send the file here."""
 
 # ── Phase 4: Utility Prediction ──────────────────────────────────────────────
 
-TOKEN_ENTRY_PROMPT = """
-⚡ *Electricity Token Entry*
+TOKEN_ENTRY_PROMPT = """⚡ *Electricity Token Entry*
 
 *Option 1 (Recommended):* Paste the full KPLC token SMS:
 ```
@@ -429,8 +442,44 @@ TOKEN_COST_BREAKDOWN = """
 💡 *Cost Breakdown (from your token):*
 Actual electricity: KES {elec_amount:,.2f} ({elec_pct:.0f}%)
 Taxes & levies: KES {tax_amount:,.2f} ({tax_pct:.0f}%)
-Rate: KES {rate_per_unit:.2f}/unit
-Tariff: {tariff_tier}
+Your rate: KES {rate_per_unit:.2f}/unit — {tariff_tier}
+_Levy charges vary monthly per EPRA gazette._
+"""
+
+TOKENS_STATUS_CARD = """
+⚡ *Your Electricity Status*
+
+Units Remaining: ~{units_remaining:.1f} kWh
+Daily Rate: {daily_rate} units/day ({source_label})
+Est. Depletion: {depletion_date}
+Days Left: {days_left}
+Confidence: {bar} {label}
+
+_{encouragement}_
+"""
+
+TOKEN_ALERT_7D = """
+⚡ Heads up — your electricity tokens will run out in about {days} days (around {date}).
+
+Buy tokens soon to avoid disruption.
+
+_Tap /tokens to log your next purchase._
+"""
+
+TOKEN_ALERT_3D = """
+⚠️ Your electricity tokens are running low — {days} days remaining (around {date}).
+
+Buy tokens today.
+
+_Tap /tokens to log your next purchase._
+"""
+
+TOKEN_ALERT_1D = """
+🚨 URGENT — Your electricity tokens expire tomorrow ({date}).
+
+Buy tokens NOW to avoid losing power.
+
+_Tap /tokens to log your next purchase._
 """
 
 
@@ -659,15 +708,16 @@ UPGRADE_PROMPT = """
 
 Choose a plan to continue after your trial or to unlock premium features:
 
-🔹 *Mtu Wenyewe* (KES {mtu_price}/mo)
+🔹 *Core* (KES {core_price}/mo)
 • Daily business reports
 • Automated VAT summaries
 • Utility tracking (Tokens/Fuliza)
 
-🔸 *Biashara* (KES {biashara_price}/mo)
-• *Everything in Mtu Wenyewe*
-• Advanced AI Business Insights
-• Daily automated income tracking
+🔸 *Pro* (KES {pro_price}/mo)
+• *Everything in Core*
+• AI Financial Tips & Insights
+• Anomaly Detection & Alerts
+• Referral Rewards (20% Off)
 
 Select a plan below:
 """
@@ -703,14 +753,14 @@ Support: {upgrade_link}
 UPGRADE_REQUIRED = """
 🔒 *Feature Locked*
 
-The *{feature_name}* feature requires an active subscription.
+The *{feature_name}* feature is available on Mazao Core (KES 149). 
 
-Your trial has expired. Upgrade now to keep managing your business with AI:
+Upgrade now to unlock and continue managing your business with AI:
 {upgrade_link}
 """
 
 TRIAL_REMINDER = """
-💡 *Quick Tip*: You have *{days_remaining} days* left in your free trial. Upgrade anytime with /upgrade.
+💡 *Quick Tip*: You have *{days_remaining} days* left in your free trial. Upgrade anytime with /upgrade to keep your momentum!
 """
 
 TRIAL_EXPIRY_WARNING = """
@@ -723,10 +773,43 @@ Type /upgrade to see options.
 """
 
 TRIAL_EXPIRED = """
-🛑 *Trial Expired*
+🛑 *Service Paused*
 
-Your free trial has ended and your automated reports are now paused.
+Your free trial or subscription has ended. Automated reports and live tracking are now paused.
 
 Don't lose your business momentum! Upgrade to a paid plan now to resume full service.
-Type /upgrade to get started.
+Type /upgrade to see options (Core @ KES 149 / Pro @ KES 399).
+"""
+
+# ── Phase 7: Conversion & Growth (P17-T4J) ───────────────────────────────
+
+NUDGE_TRIAL_DAY_6 = """
+⏳ *Your trial ends tomorrow!*
+
+You've seen the power of AI bookkeeping. Upgrade now to keep your daily insights and compliance alerts active.
+
+Reply /upgrade to choose a plan.
+"""
+
+NUDGE_POST_USAGE_VALUE = """
+💡 *Quick Tip*
+You're already saving time with utility tracking. Unlock automated projections and proactive alerts with Mazao Core (KES 149).
+
+Reply /upgrade to see more.
+"""
+
+NUDGE_REPORT_VALUE_ANCHOR = """
+📈 *Go deeper with Pro*
+Did you know Mazao Pro includes AI financial tips and anomaly detection? 
+
+Upgrade to Pro (KES 399) to unlock your full business potential.
+Reply /upgrade for details.
+"""
+
+NUDGE_INACTIVITY_REACTIVATION = """
+👋 *We miss you!*
+You're missing out on daily M-Pesa reports and KRA reminders. 
+
+Come back and upgrade to Mazao Core for just KES 149/month to get your business back on track.
+Reply /upgrade to resume.
 """

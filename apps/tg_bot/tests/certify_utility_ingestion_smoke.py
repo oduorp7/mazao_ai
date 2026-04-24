@@ -110,7 +110,7 @@ class TestUtilityIngestionSmoke(unittest.IsolatedAsyncioTestCase):
         # Verify block message was sent
         self.update.effective_message.reply_text.assert_called()
         args, kwargs = self.update.effective_message.reply_text.call_args
-        self.assertIn("requires an active subscription", args[0])
+        self.assertIn("available on Mazao Core", args[0])
 
     @patch('apps.tg_bot.handlers.is_feature_allowed', new_callable=AsyncMock)
     @patch('apps.tg_bot.handlers.db')
@@ -321,6 +321,85 @@ class TestAdminDashboardNormalization(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Core (KES 149): 2", report_text)
             self.assertIn("Trial: 1", report_text)
             self.assertIn("Free: 2", report_text)
+
+class TestConversionGrowthLayer(unittest.IsolatedAsyncioTestCase):
+    """Tier A: Verify Conversion and Growth triggers (P17-T4J)."""
+
+    def setUp(self):
+        self.tid = 123456789
+        self.update = AsyncMock()
+        self.update.effective_user.id = self.tid
+        self.update.effective_chat.id = self.tid
+        self.update.message = AsyncMock()
+        self.context = MagicMock()
+        self.context.user_data = {}
+
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_post_usage_nudge_session_gating(self, mock_reply):
+        """Verify _maybe_send_nudge obeys session gating (max 1 nudge)."""
+        from apps.tg_bot.handlers import _maybe_send_nudge
+        import apps.tg_bot.messages as M
+        
+        # 1. First nudge should pass
+        await _maybe_send_nudge(self.update, self.context, M.NUDGE_POST_USAGE_VALUE, condition=True)
+        mock_reply.assert_called_with(self.update, M.NUDGE_POST_USAGE_VALUE)
+        self.assertTrue(self.context.user_data.get("nudge_sent_this_session"))
+        
+        # 2. Second nudge should be blocked
+        mock_reply.reset_mock()
+        await _maybe_send_nudge(self.update, self.context, M.NUDGE_REPORT_VALUE_ANCHOR, condition=True)
+        mock_reply.assert_not_called()
+
+    @patch('apps.tg_bot.scheduler.db.get_client')
+    @patch('apps.tg_bot.scheduler.db.get_all_active_tenants')
+    async def test_trial_day_6_urgency(self, mock_get_all, mock_get_client):
+        """Trial user on day 6 sees urgency message (Conversion Trigger 1)."""
+        from apps.tg_bot.scheduler import job_trial_alerts
+        import apps.tg_bot.messages as M
+        
+        bot = AsyncMock()
+        from datetime import datetime, timezone, timedelta
+        # Day 6 means ends in 1 day. Use 1.5 days to ensure (ends - now).days == 1 
+        # despite any small execution delays.
+        ends = (datetime.now(timezone.utc) + timedelta(days=1.5)).isoformat()
+        
+        mock_get_all.return_value = [{
+            "telegram_id": self.tid,
+            "plan": "free", 
+            "subscription_active": False,
+            "trial_ends_at": ends,
+            "id": "t1"
+        }]
+        
+        await job_trial_alerts(bot)
+        
+        bot.send_message.assert_called()
+        args = bot.send_message.call_args[1]
+        self.assertEqual(args["text"], M.NUDGE_TRIAL_DAY_6)
+
+    @patch('apps.tg_bot.scheduler.db.get_client')
+    async def test_inactivity_reactivation(self, mock_get_client):
+        """Lapsed user receives reactivation nudge (Conversion Trigger 5)."""
+        from apps.tg_bot.scheduler import job_inactivity_reactivation
+        import apps.tg_bot.messages as M
+        from telegram.constants import ParseMode
+        
+        bot = AsyncMock()
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        mock_res = MagicMock()
+        mock_res.data = [{"telegram_id": self.tid, "plan": "free", "status": "lapsed"}]
+        # Mocking the query chain: client.table().select().eq().eq().execute()
+        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = mock_res
+        
+        await job_inactivity_reactivation(bot)
+        
+        bot.send_message.assert_called_with(
+            chat_id=self.tid,
+            text=M.NUDGE_INACTIVITY_REACTIVATION,
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 
 if __name__ == '__main__':

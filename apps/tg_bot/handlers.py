@@ -202,6 +202,22 @@ async def _reply(update: Update, text: str, **kwargs) -> None:
         **kwargs,
     )
 
+async def _maybe_send_nudge(update: Update, context: ContextTypes.DEFAULT_TYPE, nudge_text: str, condition: bool = True) -> None:
+    """Sends a conversion nudge if conditions are met and none has been sent in this session (P17-T4J)."""
+    if not condition:
+        return
+    
+    # Session gating (one nudge per interaction session)
+    if context.user_data.get("nudge_sent_this_session"):
+        return
+    
+    try:
+        await _reply(update, nudge_text)
+        context.user_data["nudge_sent_this_session"] = True
+        log.info("conversion_nudge_sent", telegram_id=update.effective_user.id)
+    except Exception as e:
+        log.error("conversion_nudge_failed", error=str(e))
+
 
 def _fmt_kes(amount: float) -> str:
     return f"{amount:,.0f}"
@@ -1127,6 +1143,13 @@ async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
 
+        # P17-T4J: Post-usage nudge (Conversion Trigger 2)
+        await _maybe_send_nudge(
+            update, context, 
+            M.NUDGE_POST_USAGE_VALUE, 
+            condition=tenant.get("plan") in ("free", "trial")
+        )
+
         # P16-T1: AI engagement tip (safe, optional, free-tier LLM)
         tip_text = ""
         try:
@@ -1405,6 +1428,15 @@ async def _run_pipeline_and_reply(
                         },
                     )
                 )
+
+            # P17-T4J: Report value anchor nudge (Conversion Trigger 4)
+            # Since update might be from a different interaction, we use context.user_data
+            # but we need to ensure update is available for _maybe_send_nudge
+            await _maybe_send_nudge(
+                update, context, 
+                M.NUDGE_REPORT_VALUE_ANCHOR, 
+                condition=tenant.get("plan") != "pro"
+            )
         else:
             await context.bot.send_message(
                 chat_id=tid,
@@ -2272,6 +2304,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 confidence_info=conf_text,
                 source_explanation=src_label
             ))
+
+            # P17-T4J: Post-usage nudge (Conversion Trigger 2)
+            await _maybe_send_nudge(
+                update, context, 
+                M.NUDGE_POST_USAGE_VALUE, 
+                condition=tenant.get("plan") in ("free", "trial")
+            )
         except Exception as e:
             log.error("gas_entry_failed", error=str(e))
             await _reply(update, "❌ *Invalid Input*\nPlease use format: `6 22/04/2026`")
