@@ -500,6 +500,40 @@ class TestConversionGrowthLayer(unittest.IsolatedAsyncioTestCase):
             parse_mode=ParseMode.MARKDOWN
         )
 
+class TestSuperadminBypass(unittest.IsolatedAsyncioTestCase):
+    """Tier A: Verify Superadmin FAANG-grade bypass (P17-T5C)."""
+
+    @patch('apps.tg_bot.trial.get_client')
+    async def test_superadmin_bypass_allows_fuliza(self, mock_get_client):
+        """Superadmin should get True for any feature."""
+        from apps.tg_bot.trial import is_feature_allowed, SUPERADMIN_TELEGRAM_IDS
+        
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_res = MagicMock()
+        mock_res.data = {"telegram_id": SUPERADMIN_TELEGRAM_IDS[0]}
+        mock_client.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = mock_res
+        
+        allowed = await is_feature_allowed("some-tenant-id", "utility_tracking")
+        self.assertTrue(allowed)
+
+    @patch('apps.tg_bot.trial.get_client')
+    @patch('apps.tg_bot.trial.get_trial_status', new_callable=AsyncMock)
+    async def test_normal_user_still_blocked_without_subscription(self, mock_status, mock_get_client):
+        """Normal free users should be blocked for utility_tracking."""
+        from apps.tg_bot.trial import is_feature_allowed
+        
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_res = MagicMock()
+        mock_res.data = {"telegram_id": "999999"} # Not an admin
+        mock_client.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = mock_res
+        
+        mock_status.return_value = {"active": False, "days_remaining": 0, "is_expired": True, "plan": "free"}
+        
+        allowed = await is_feature_allowed("some-tenant-id", "utility_tracking")
+        self.assertFalse(allowed)
+
 
 if __name__ == '__main__':
     unittest.main()
