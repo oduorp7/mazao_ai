@@ -148,6 +148,24 @@ def _detect_tariff_tier(rate_per_unit: float) -> Dict:
     return {"key": "D3", **d3}
 
 
+async def _check_subscription_guard(update: Update, feature: str = "utility_tracking") -> bool:
+    """Centralized subscription guard for user-initiated utility entry."""
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return False
+        
+    if not await is_feature_allowed(str(tenant["id"]), feature):
+        await _reply(update, M.UPGRADE_REQUIRED.format(
+            feature_name="Utility Tracking",
+            upgrade_link=f"{os.getenv('FLY_APP_URL', 'https://mazao-ai.fly.dev')}/upgrade"
+        ))
+        return False
+    return True
+
+
 def _tg_id(update: Update) -> int:
     return update.effective_user.id
 
@@ -2051,6 +2069,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # P16-FINAL: Auto-Detect KPLC SMS (Zero Friction + Typo Resistant)
     import re as _re
     if text and (_re.search(r'(mtr|mur|mrt|token|tknamt):', text.lower())):
+        # P17-T4A: Guard auto-detect path
+        if not await _check_subscription_guard(update):
+            return
         log.info("auto_detect_token_sms", user_id=update.message.from_user.id)
         return await awaiting_tokens(update, context)
 
@@ -2180,9 +2201,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     if state == "awaiting_tokens":
+        # P17-T4A: Guard state-based token entry
+        if not await _check_subscription_guard(update):
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            return
         return await awaiting_tokens(update, context)
 
     if state == "awaiting_gas":
+        # P17-T4A: Guard state-based gas entry
+        if not await _check_subscription_guard(update):
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            return
         # P17-T1B-FIX: Strict regex for <amount> <dd/mm/yyyy>
         m = re.match(r"^\s*(\d+)\s+(\d{1,2}/\d{1,2}/\d{4})\s*$", text)
         if not m:
