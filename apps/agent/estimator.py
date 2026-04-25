@@ -1,5 +1,5 @@
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
 import math as _math
 
@@ -76,7 +76,7 @@ def get_gas_projection_state(history: List[Dict], h_type: str, refill_kg: float 
     if daily_rate <= 0: daily_rate = pop_rate
     
     # Calculate Days Remaining
-    now = datetime.now() # Caller should handle timezones if needed, but relative days are stable
+    now = datetime.now(timezone.utc)
     
     if refill_kg > 0:
         # Scenario A: Just refilled today
@@ -102,7 +102,7 @@ def get_gas_projection_state(history: List[Dict], h_type: str, refill_kg: float 
             now_aware = datetime.now(l_date.tzinfo)
             days_since = (now_aware - l_date).days
         else:
-            days_since = (datetime.now() - l_date).days
+            days_since = (datetime.now(timezone.utc) - l_date).days
             
         total_days = stacked_units / daily_rate
         days_rem = calculate_days_remaining(stacked_units - (daily_rate * days_since), daily_rate)
@@ -110,7 +110,7 @@ def get_gas_projection_state(history: List[Dict], h_type: str, refill_kg: float 
         # Scenario C: No data
         return {"n": 0, "daily_rate": pop_rate, "days_remaining": 0, "depletion_date": "N/A", "confidence": CONFIDENCE_LABELS["0-1"]}
 
-    depletion_date = (datetime.now() + timedelta(days=max(0, days_rem))).strftime("%d %b %Y")
+    depletion_date = (datetime.now(timezone.utc) + timedelta(days=max(0, days_rem))).strftime("%d %b %Y")
     
     return {
         "n": n,

@@ -598,7 +598,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             msg = M.LANGUAGE_SET_EN if lang == "en" else M.LANGUAGE_SET_SW
             
             # ── Warm Onboarding Finish (P9-T5) ───────────────────────────
-            trial_ends = (datetime.utcnow() + timedelta(days=7)).strftime("%d %b %Y")
+            trial_ends = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%d %b %Y")
             badge = M.FOUNDING_BADGE if tenant.get("founding_member") else ""
             
             if tenant.get("user_type") == "individual":
@@ -783,7 +783,7 @@ async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         status=status_label
     )
     
-    today = datetime.utcnow()
+    today = datetime.now(timezone.utc)
     
     for ob in obligations:
         days_left = (ob["due_date"].date() - today.date()).days
@@ -847,13 +847,13 @@ async def cmd_statement(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "📂 *M-Pesa Statement Summary*\n"
             f"Period: {statement.get('period', 'N/A')}\n"
             f"Parsed: {str(statement.get('parsed_at', '')).split('T')[0]}\n\n"
-            f"💰 Total Inflows:  KES {(statement.get('total_inflows') or 0):,.2f}\n"
-            f"💸 Total Outflows: KES {(statement.get('total_outflows') or 0):,.2f}\n"
+            f"💰 Total Inflows:  KES {float(statement.get('total_inflows') or 0):,.2f}\n"
+            f"💸 Total Outflows: KES {float(statement.get('total_outflows') or 0):,.2f}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            f"📈 *Net Amount:    KES {(statement.get('net') or 0):,.2f}*\n"
+            f"📈 *Net Amount:    KES {float(statement.get('net') or 0):,.2f}*\n"
         )
         
-        vat_est = statement.get("vat_estimate") or 0
+        vat_est = float(statement.get("vat_estimate") or 0)
         if vat_est > 0:
             text += f"\n📋 *Est. VAT Liability: KES {vat_est:,.2f}*"
             text += "\n_(Label: Clearly an Estimate)_"
@@ -1248,7 +1248,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if tenant.get("user_type") == "business":
             vat_estimate = inflows * 0.16
             
-        period = datetime.utcnow().strftime("%Y-%m")
+        period = datetime.now(timezone.utc).strftime("%Y-%m")
         if txs:
             # Try to get period from transactions
             period = txs[0].timestamp.strftime("%Y-%m")
@@ -1523,7 +1523,7 @@ async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, M.NOT_REGISTERED)
         return
 
-    today = datetime.utcnow()
+    today = datetime.now(timezone.utc)
     next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
 
     obligations = [
@@ -1802,7 +1802,7 @@ async def cmd_fuliza(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 .execute()
         )
         if rows and hasattr(rows, "data") and isinstance(rows.data, list) and rows.data:
-            today = datetime.utcnow().date()
+            today = datetime.now(timezone.utc).date()
             # Latest entry
             latest = rows.data[0]
             if not latest.get("due_date") or not isinstance(latest["due_date"], str):
@@ -1917,7 +1917,7 @@ async def cmd_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             return
         
         text = M.SUBSCRIPTIONS_LIST_HEADER
-        today = datetime.utcnow()
+        today = datetime.now(timezone.utc)
         
         for s in subs.data:
             # Calculate next renewal date
@@ -2150,7 +2150,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     avg_trial = sum(t["trial_days_left"] for t in trial_data) / len(trial_data) if trial_data else 0
     
     # 4. Monthly Revenue
-    this_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    this_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     rev_resp = await asyncio.get_event_loop().run_in_executor(
         None, lambda: client.table("payment_requests").select("amount, tenant_id").eq("status", "confirmed").gte("confirmed_at", this_month).execute()
     )
@@ -2477,7 +2477,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     if not ex.get("due_date") or not isinstance(ex["due_date"], str):
                         raise ValueError("Invalid due_date")
                     ex_due = datetime.strptime(ex["due_date"], "%Y-%m-%d").date()
-                    ex_days = (ex_due - datetime.utcnow().date()).days
+                    ex_days = (ex_due - datetime.now(timezone.utc).date()).days
                     ex_bal = float(ex["balance"])
                     ex_fee = float(ex["access_fee"]) if ex.get("access_fee") else None
                     ex_amtb = float(ex["amount_borrowed"]) if ex.get("amount_borrowed") else None
@@ -2518,7 +2518,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 lambda: db.get_client().table("fuliza_entries").insert(insert_data).execute()
             )
             
-            days_left = (due_date - datetime.utcnow().date()).days
+            days_left = (due_date - datetime.now(timezone.utc).date()).days
             # P17-T5H: DO NOT clear state — keep multi-entry session alive
             
             # ── Fuliza Intelligence Output (P17-T5G) ──
@@ -2606,7 +2606,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 }).execute()
             )
             
-            today = datetime.utcnow()
+            today = datetime.now(timezone.utc)
             next_date = today.replace(day=day)
             if today.day >= day:
                 next_date = (next_date + timedelta(days=32)).replace(day=day)
@@ -2631,7 +2631,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
         
         # ── Rate Limiting (P8-T4) ──
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         tenant_attempts = upgrade_rate_limit.get(tid, [])
         tenant_attempts = [ts for ts in tenant_attempts if (now - ts).total_seconds() < 600]
         if len(tenant_attempts) >= 3:

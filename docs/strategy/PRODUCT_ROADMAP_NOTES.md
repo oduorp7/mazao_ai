@@ -1,34 +1,30 @@
-# Mazao AI Product Roadmap & Strategy Notes
+# Mazao AI — Product Roadmap Notes
 
-This document captures deferred architecture ideas, future financial product candidates, and UX patterns to maintain a lean, anti-overengineered core.
+## T8A: Governed Conversational Insight Layer (DEFERRED)
 
-## 🛡️ Governance: Anti-Overengineering Rule
-**Rule**: Finish and prove the market-fit of one financial product before adding another. No concurrent development of complex loan/credit products.
+### Objective
+Transition the bot from a "command-only" utility to a governed conversational assistant that can guide users through complex financial flows without violating regulatory boundaries.
 
----
+### Architecture
+The conversational layer will follow a strict 4-layer hierarchy:
+1.  **Layer 1: Command Handlers (Canonical)** — The primary interface for all known financial operations (`/fuliza`, `/till`, `/statement`).
+2.  **Layer 2: Deterministic System Intelligence** — Direct responses for account status and predefined insights.
+3.  **Layer 3: Rule-Based Intent Router** — A deterministic router that maps natural language (e.g., "how do I use Fuliza?") to specific tutoring flows or commands.
+4.  **Layer 4: Strictly Gated AI Fallback** — A large language model (LLM) used ONLY as a last resort for out-of-scope queries(Currently using DeepSeek V3 for financila anlysis but as the elite faang engineer in this projec, advise on we wether we can use the free mistral model for the controlled AI layer).
 
-## 🏦 Future Financial Products (Deferred)
+### Finance Boundary Policy
+- **Educational Only**: The bot explains and guides based on application data scope.
+- **No Regulated Advice**: The bot MUST NOT provide investment, loan, or tax planning recommendations that constitute regulated financial advice.
+- **Scope Limitation**: The bot will not answer questions about medical, legal, political, or general internet topics.
 
-### M-Shwari Integration (Phase T6 Candidate)
-*   **Status**: DEFERRED.
-*   **Objective**: Automate tracking of M-Shwari loans and savings using the same pattern-matching intelligence used for Fuliza.
-*   **Why Deferred**: Fuliza Intelligence V1 must be validated first. Daraja C2B integration is a higher priority infrastructure dependency.
-
----
-
-## 📱 UX & Navigation Patterns (Deferred)
-
-### Intelligent Back Button
-*   **Status**: DEFERRED.
-*   **Objective**: A lightweight "Previous Screen" pattern for deep menus.
-*   **Design**: One-step historical pointer only. No complex journey graphs or session replays.
-*   **Why Deferred**: Current command-based navigation (using /menu or /cancel) is sufficient for V1 stability.
+### Interaction Examples
+- **User says "hi"**: Bot greets and suggests relevant commands based on user status.
+- **User asks "how do I use Fuliza?"**: Bot tutors the user toward the `/fuliza` command and explains the parsing requirements.
+- **Out-of-Scope**: Bot politely redirects the user back to supported financial tools.
 
 ---
 
-## 📊 Credit Intelligence Evolution
-
-### Fuliza Intelligence V1 (Current)
-*   **Scope**: Access Fee burden, Usage Frequency, and Repayment Nudges.
-*   **Constraint**: Deterministic logic only (no LLMs).
-*   **Gating**: Advanced analytics restricted to **Pro Tier** to incentivize conversion.
+## Deferred Features
+- **M-Shwari Implementation**: Deferred to Phase 18+.
+- **Daraja Full Integration**: Deferred to Phase 19+.
+- **LLM-First Routing**: Explicitly forbidden to ensure deterministic reliability.

@@ -25,7 +25,7 @@ pipeline.py (agent), and db.py.
 import os
 import sys
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from telegram import Bot, Update, BotCommand, BotCommandScopeChat, BotCommandScopeDefault
@@ -57,6 +57,7 @@ from apps.tg_bot.handlers import (
     cmd_refer,
     cmd_upgrade,
     cmd_admin,
+    cmd_till,
     cmd_statement,
     cmd_tokens,
     cmd_gas,
@@ -180,6 +181,7 @@ async def main() -> None:
     app.add_handler(CommandHandler("refer",    cmd_refer))
     app.add_handler(CommandHandler("upgrade",  cmd_upgrade))
     app.add_handler(CommandHandler("admin",    cmd_admin))
+    app.add_handler(CommandHandler("till",     cmd_till))
     app.add_handler(CommandHandler("statement", cmd_statement))
     app.add_handler(CommandHandler("tokens", cmd_tokens))
     app.add_handler(CommandHandler("gas", cmd_gas))
@@ -322,9 +324,10 @@ async def main() -> None:
     
     runner = web.AppRunner(health_app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    log.info("webhook_server_live", port=8080)
+    log.info("webhook_server_live", port=port)
 
     # Heartbeat task
     async def heartbeat():
@@ -374,7 +377,7 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
                 # Update Payment Request
                 db.table("payment_requests").update({
                     "status": "confirmed",
-                    "confirmed_at": datetime.utcnow().isoformat()
+                    "confirmed_at": datetime.now(timezone.utc).isoformat()
                 }).eq("id", request_data["id"]).execute()
                 
                 # Determine Plan (P17-T4D Alignment)
@@ -386,7 +389,7 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
                     new_plan = "free"
                 
                 # Update Tenant
-                expires_at = (datetime.utcnow() + timedelta(days=30)).isoformat()
+                expires_at = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
                 db.table("tenants").update({
                     "plan": new_plan,
                     "subscription_active": True,

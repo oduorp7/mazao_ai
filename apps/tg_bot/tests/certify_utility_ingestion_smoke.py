@@ -241,7 +241,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         """Verify HIGH risk for days_left < 7."""
         from datetime import date, datetime as real_dt
         mock_dt.strptime = real_dt.strptime
-        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 20)  # 4 days before due
+        mock_dt.now.return_value.date.return_value = date(2026, 5, 20)  # 4 days before due
         mock_db.get_tenant.return_value = self.tenant
         mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
         self.update.effective_message.text = "191.57 24/05/2026 193.49"
@@ -258,7 +258,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         """Verify MEDIUM risk for 7 <= days_left <= 14."""
         from datetime import date, datetime as real_dt
         mock_dt.strptime = real_dt.strptime
-        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 14)  # 10 days before due
+        mock_dt.now.return_value.date.return_value = date(2026, 5, 14)  # 10 days before due
         mock_db.get_tenant.return_value = self.tenant
         mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
         self.update.effective_message.text = "191.57 24/05/2026 193.49"
@@ -275,7 +275,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         """Verify OVERDUE risk for days_left <= 0."""
         from datetime import date, datetime as real_dt
         mock_dt.strptime = real_dt.strptime
-        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 25)  # 1 day after due
+        mock_dt.now.return_value.date.return_value = date(2026, 5, 25)  # 1 day after due
         mock_db.get_tenant.return_value = self.tenant
         mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
         self.update.effective_message.text = "191.57 24/05/2026 193.49"
@@ -292,7 +292,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         """Verify Daily Cost appears when fee is present and days_left > 0."""
         from datetime import date, datetime as real_dt
         mock_dt.strptime = real_dt.strptime
-        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 14)  # 10 days before due
+        mock_dt.now.return_value.date.return_value = date(2026, 5, 14)  # 10 days before due
         mock_db.get_tenant.return_value = self.tenant
         mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
         self.update.effective_message.text = "Code: UDOL822FF5\nFuliza Amount: 191.57\nFee: 1.92\nTotal: 193.49\nOutstanding: 193.49\nDue: 24/05/2026"
@@ -351,7 +351,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         # Explicitly setup the chain to return a real date object
         mock_utcnow = MagicMock()
         mock_utcnow.date.return_value = date(2026, 5, 20)
-        mock_dt.utcnow.return_value = mock_utcnow
+        mock_dt.now.return_value = mock_utcnow
         
         mock_db.get_tenant.return_value = self.tenant
         mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
@@ -407,7 +407,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         """Verify Pro users see advanced Fuliza intelligence."""
         from datetime import date, datetime as real_dt
         mock_dt.strptime = real_dt.strptime
-        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 20)
+        mock_dt.now.return_value.date.return_value = date(2026, 5, 20)
         
         # Pro user
         mock_db.get_tenant.return_value = {**self.tenant, "plan": "pro"}
@@ -457,7 +457,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         """Verify frequent-use nudge appears when threshold (>5) exceeded."""
         from datetime import date, datetime as real_dt
         mock_dt.strptime = real_dt.strptime
-        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 20)
+        mock_dt.now.return_value.date.return_value = date(2026, 5, 20)
         
         mock_db.get_tenant.return_value = {**self.tenant, "plan": "pro"}
         mock_allowed.return_value = True

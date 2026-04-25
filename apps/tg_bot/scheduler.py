@@ -44,7 +44,7 @@ async def job_admin_daily_digest(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     client = db.get_client()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     last_24h = (now - timedelta(days=1)).isoformat()
     three_days_out = (now + timedelta(days=3)).isoformat()
 
@@ -161,7 +161,7 @@ async def _process_tenant(bot: Bot, tenant: dict) -> None:
                 None,
                 lambda: db.save_report(
                     tenant_id=str(tenant["id"]),
-                    period=datetime.utcnow().strftime("%Y-%m"),
+                    period=datetime.now(timezone.utc).strftime("%Y-%m"),
                     summary={
                         "income": r.total_income,
                         "expenses": r.total_expenses,
@@ -190,7 +190,7 @@ PENALTY_RATE = 0.05   # 5% per month
 
 async def job_deadline_alerts(bot: Bot) -> None:
     tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
 
     log.info("deadline_alerts_start", tenant_count=len(tenants))
 
@@ -250,7 +250,7 @@ async def job_deadline_alerts(bot: Bot) -> None:
         }
 
         first_of_next_month = (
-            datetime.utcnow().replace(day=1) + timedelta(days=32)
+            datetime.now(timezone.utc).replace(day=1) + timedelta(days=32)
         ).replace(day=1).date()
 
         for ob in KRA_OBLIGATIONS:
@@ -302,7 +302,7 @@ async def job_deadline_alerts(bot: Bot) -> None:
 async def job_trial_alerts(bot: Bot) -> None:
     """Check for trial expiry and send warnings at T-3 and T-0."""
     tenants = await asyncio.get_event_loop().run_in_executor(None, db.get_all_active_tenants)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     log.info("trial_alerts_start", count=len(tenants))
 
@@ -449,7 +449,7 @@ async def job_token_depletion_check(bot: Bot) -> None:
 # ── Job 5: Fuliza payment reminders (P4-T4) ──────────────────────────────────
 
 async def job_fuliza_alerts(bot: Bot) -> None:
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     try:
         # Get all entries due soon
         resp = await asyncio.get_event_loop().run_in_executor(
@@ -480,7 +480,7 @@ async def job_fuliza_alerts(bot: Bot) -> None:
 
 
 async def job_subscription_alerts(bot: Bot) -> None:
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     try:
         # Get all subscriptions
         resp = await asyncio.get_event_loop().run_in_executor(

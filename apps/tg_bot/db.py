@@ -13,7 +13,7 @@ Tables expected (run schema.sql to create):
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from supabase import create_client, Client
@@ -64,7 +64,7 @@ def create_tenant(
                 "status": "pending",        # pending → active after M-Pesa setup
                 "plan": "trial",            # trial | free | core | pro
                 "trial_days_left": 7,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
         )
         .execute()
@@ -77,7 +77,7 @@ def update_tenant(telegram_id: int, updates: dict) -> dict:
     resp = (
         get_client()
         .table("tenants")
-        .update({**updates, "updated_at": datetime.utcnow().isoformat()})
+        .update({**updates, "updated_at": datetime.now(timezone.utc).isoformat()})
         .eq("telegram_id", telegram_id)
         .execute()
     )
@@ -120,7 +120,7 @@ def set_conv_state(telegram_id: int, state: str, data: dict | None = None) -> No
             "telegram_id": telegram_id,
             "state": state,
             "data": data or {},
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     ).execute()
 
@@ -137,7 +137,7 @@ def save_report(tenant_id: str, period: str, summary: dict) -> None:
             "tenant_id": tenant_id,
             "period": period,
             "summary": summary,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
     ).execute()
 
@@ -178,7 +178,7 @@ def save_statement(
                 "total_outflows": total_outflows,
                 "net": net,
                 "vat_estimate": vat_estimate,
-                "parsed_at": datetime.utcnow().isoformat(),
+                "parsed_at": datetime.now(timezone.utc).isoformat(),
             }
         )
         .execute()
@@ -228,7 +228,7 @@ def get_individual_obligations(telegram_id: int) -> List[dict]:
         return []
 
     status = tenant.get("employment_status", "unemployed")
-    today = datetime.utcnow()
+    today = datetime.now(timezone.utc)
     
     # Income Tax Return: June 30
     return_year = today.year
