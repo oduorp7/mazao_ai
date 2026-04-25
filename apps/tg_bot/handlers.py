@@ -254,7 +254,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         referrer_resp = await asyncio.get_event_loop().run_in_executor(
             None, lambda: db.get_client().table("tenants").select("id").eq("referral_code", ref_code).execute()
         )
-        if referrer_resp.data:
+        if referrer_resp and referrer_resp.data:
             referred_by_id = referrer_resp.data[0]["id"]
             log.info("referrer_found", referrer_id=referred_by_id)
 
@@ -759,66 +759,70 @@ async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Displays the upcoming obligations for an individual user."""
-    tid = _tg_id(update)
-    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-    
-    if not tenant:
-        await _reply(update, M.NOT_REGISTERED)
-        return
-
-    # P7-T6: Feature Gating
-    if not await is_feature_allowed(str(tenant["id"]), "compliance_alerts"):
-        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Individual Status", upgrade_link="/upgrade"))
-        return
+    try:
+        tid = _tg_id(update)
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
         
-    if tenant.get("user_type") != "individual":
-        await _reply(update, M.MYSTATUS_BUSINESS_REDIRECT)
-        return
+        if not tenant:
+            await _reply(update, M.NOT_REGISTERED)
+            return
 
-    obligations = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_individual_obligations(tid))
-    
-    status_label = tenant.get("employment_status", "unknown").title().replace("_", " ")
-    text = M.MYSTATUS_HEADER.format(
-        name=tenant.get("full_name", _username(update)),
-        status=status_label
-    )
-    
-    today = datetime.now(timezone.utc)
-    
-    for ob in obligations:
-        days_left = (ob["due_date"].date() - today.date()).days
-        icon = "📋" if "Return" in ob["name"] else "🏥"
+        # P7-T6: Feature Gating
+        if not await is_feature_allowed(str(tenant["id"]), "compliance_alerts"):
+            await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Individual Status", upgrade_link="/upgrade"))
+            return
+            
+        if tenant.get("user_type") != "individual":
+            await _reply(update, M.MYSTATUS_BUSINESS_REDIRECT)
+            return
+
+        obligations = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_individual_obligations(tid))
         
-        text += M.MYSTATUS_OBLIGATION_ROW.format(
-            icon=icon,
-            name=ob["name"],
-            due_date=ob["due_date"].strftime("%d %b %Y"),
-            description=ob["description"],
-            days_left=f"{days_left} days" if days_left >= 0 else "OVERDUE"
+        status_label = tenant.get("employment_status", "unknown").title().replace("_", " ")
+        text = M.MYSTATUS_HEADER.format(
+            name=tenant.get("full_name", _username(update)),
+            status=status_label
         )
         
-    # CF-1: Proactive redaction of KRA PIN patterns (A0xxxxxxxB)
-    import re
-    text = re.sub(r'\b[A-P]\d{9}[A-Z]\b', '[REDACTED]', text)
-    
-    # P18-T4: Electricity summary
-    try:
-        tenant_data = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-        proj = await _get_electricity_projection(tid, tenant_data)
+        today = datetime.now(timezone.utc)
         
-        text += "\n"
-        if proj["n"] > 0:
-            text += M.MYSTATUS_ELECTRICITY_ROW.format(
-                daily_rate=proj["daily_rate"],
-                depletion_date=proj["depletion_date"],
-                days_left=proj["days_remaining"]
+        for ob in obligations:
+            days_left = (ob["due_date"].date() - today.date()).days
+            icon = "📋" if "Return" in ob["name"] else "🏥"
+            
+            text += M.MYSTATUS_OBLIGATION_ROW.format(
+                icon=icon,
+                name=ob["name"],
+                due_date=ob["due_date"].strftime("%d %b %Y"),
+                description=ob["description"],
+                days_left=f"{days_left} days" if days_left >= 0 else "OVERDUE"
             )
-        else:
-            text += M.MYSTATUS_ELECTRICITY_EMPTY
-    except Exception as e:
-        log.warning("mystatus_electricity_failed", error=str(e))
+            
+        # CF-1: Proactive redaction of KRA PIN patterns (A0xxxxxxxB)
+        import re
+        text = re.sub(r'\b[A-P]\d{9}[A-Z]\b', '[REDACTED]', text)
+        
+        # P18-T4: Electricity summary
+        try:
+            tenant_data = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+            proj = await _get_electricity_projection(tid, tenant_data)
+            
+            text += "\n"
+            if proj["n"] > 0:
+                text += M.MYSTATUS_ELECTRICITY_ROW.format(
+                    daily_rate=proj["daily_rate"],
+                    depletion_date=proj["depletion_date"],
+                    days_left=proj["days_remaining"]
+                )
+            else:
+                text += M.MYSTATUS_ELECTRICITY_EMPTY
+        except Exception as e:
+            log.warning("mystatus_electricity_failed", error=str(e))
 
-    await _reply(update, text)
+        await _reply(update, text)
+    except Exception as exc:
+        log.exception("cmd_mystatus_failed", telegram_id=_tg_id(update), error=str(exc))
+        await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error loading your personal status. Please try again.")
 
 
 # ── /statement (P3-T5) ────────────────────────────────────────────────────────
@@ -869,42 +873,46 @@ async def cmd_statement(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error processing your statement.")
 
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    tid = _tg_id(update)
-    tenant = db.get_tenant(tid)
+    try:
+        tid = _tg_id(update)
+        tenant = db.get_tenant(tid)
 
-    if not tenant:
-        await _reply(update, M.NOT_REGISTERED)
-        return
+        if not tenant:
+            await _reply(update, M.NOT_REGISTERED)
+            return
 
-    # P3-T2: Check if a statement has been uploaded
-    statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
-    if not statement:
-        await _reply(update, M.STATEMENT_REQUIRED)
-        return
+        # P3-T2: Check if a statement has been uploaded
+        statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
+        if not statement:
+            await _reply(update, M.STATEMENT_REQUIRED)
+            return
 
-    # P7-T6: Feature Gating
-    if not await is_feature_allowed(str(tenant["id"]), "report"):
-        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Business Report", upgrade_link="/upgrade"))
-        return
+        # P7-T6: Feature Gating
+        if not await is_feature_allowed(str(tenant["id"]), "report"):
+            await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Business Report", upgrade_link="/upgrade"))
+            return
 
-    # FAANG-grade immediate feedback
-    msg = await update.message.reply_text("🔄 *Mazao AI is analyzing your transactions...*\nPlease wait a moment.")
-    
-    if not tenant.get("mpesa_till"):
-        await _reply(
-            update,
-            "⚙️ Your M-Pesa Till isn't set up yet.\n\nType /start to complete setup."
+        # FAANG-grade immediate feedback
+        msg = await update.message.reply_text("🔄 *Mazao AI is analyzing your transactions...*\nPlease wait a moment.")
+        
+        if not tenant.get("mpesa_till"):
+            await _reply(
+                update,
+                "⚙️ Your M-Pesa Till isn't set up yet.\n\nType /start to complete setup."
+            )
+            return
+
+        await _reply(update, M.REPORT_GENERATING)
+
+        log.info("report_requested", telegram_id=tid, tenant_id=tenant["id"])
+
+        # Run pipeline in background
+        context.application.create_task(
+            _run_pipeline_and_reply(update, context, tenant)
         )
-        return
-
-    await _reply(update, M.REPORT_GENERATING)
-
-    log.info("report_requested", telegram_id=tid, tenant_id=tenant["id"])
-
-    # Run pipeline in background
-    context.application.create_task(
-        _run_pipeline_and_reply(update, context, tenant)
-    )
+    except Exception as exc:
+        log.exception("cmd_report_failed", telegram_id=_tg_id(update), error=str(exc))
+        await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error preparing your report. Please try again.")
 
 
 async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1912,7 +1920,7 @@ async def cmd_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             lambda: db.get_client().table("subscriptions").select("*").eq("tenant_id", str(tenant["id"])).execute()
         )
         
-        if not subs.data:
+        if not subs or not subs.data:
             await _reply(update, M.SUBSCRIPTIONS_EMPTY)
             return
         
@@ -1943,139 +1951,146 @@ async def cmd_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # ── /till (P6-T5) ─────────────────────────────────────────────────────────────
 
 async def cmd_till(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """P6-T5: Register M-Pesa Till for live alerts."""
-    tid = _tg_id(update)
-    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-    if not tenant:
-        await _reply(update, M.NOT_REGISTERED)
-        return
+    try:
+        tid = _tg_id(update)
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        if not tenant:
+            await _reply(update, M.NOT_REGISTERED)
+            return
 
-    if tenant.get("user_type") != "business":
-        await _reply(update, M.TILL_BUSINESS_ONLY)
-        return
+        if tenant.get("user_type") != "business":
+            await _reply(update, M.TILL_BUSINESS_ONLY)
+            return
 
-    await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_till"))
-    await _reply(update, M.TILL_REGISTRATION_PROMPT)
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_till"))
+        await _reply(update, M.TILL_REGISTRATION_PROMPT)
+    except Exception as exc:
+        log.exception("cmd_till_failed", telegram_id=_tg_id(update), error=str(exc))
+        await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error processing your request. Please try again.")
 
 
 # ── /status ───────────────────────────────────────────────────────────────────
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Unified Business Dashboard (HF-T2). Redirects individuals to /mystatus."""
-    tid = _tg_id(update)
-    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    try:
+        tid = _tg_id(update)
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
-    if not tenant:
-        await _reply(update, M.NOT_REGISTERED)
-        return
+        if not tenant:
+            await _reply(update, M.NOT_REGISTERED)
+            return
 
-    # P7-T6: Feature Gating
-    if not await is_feature_allowed(str(tenant["id"]), "report"):
-        await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Business Dashboard", upgrade_link="/upgrade"))
-        return
-    
-    # P5-T3: Redirect Individual users
-    if tenant.get("user_type") == "individual":
-        await cmd_mystatus(update, context)
-        return
+        # P7-T6: Feature Gating
+        if not await is_feature_allowed(str(tenant["id"]), "report"):
+            await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Business Dashboard", upgrade_link="/upgrade"))
+            return
+        
+        # P5-T3: Redirect Individual users
+        if tenant.get("user_type") == "individual":
+            await cmd_mystatus(update, context)
+            return
 
-    # ── 1. Header ──────────────────────────────────────────────────────────
-    biz_name = tenant.get("business_name") or "Your Business"
-    report = f"🏢 *{biz_name}*\n\n"
+        # ── 1. Header ──────────────────────────────────────────────────────────
+        biz_name = tenant.get("business_name") or "Your Business"
+        report = f"🏢 *{biz_name}*\n\n"
 
-    # ── 2. Account Section ─────────────────────────────────────────────────
-    user_type = tenant.get("user_type", "business").title()
-    lang = tenant.get("preferred_language", "en").upper()
-    report += (
-        "👤 *Account*\n"
-        f"├─ Name: {biz_name}\n"
-        f"├─ Type: {user_type}\n"
-        f"└─ Lang: {lang}\n\n"
-    )
-
-    # ── 3. Plan Section ────────────────────────────────────────────────────
-    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
-    is_superadmin = admin_id and str(tid) == str(admin_id)
-    
-    if is_superadmin:
-        plan = "Super Admin"
-        status = "Active"
-    else:
-        plan = tenant.get("plan", "trial").upper()
-        status = tenant.get("status", "active").title()
-    
-    if plan == "TRIAL":
-        days_left = tenant.get("trial_days_left", 0)
-        # Fallback for trial_ends_at schema inconsistency
-        expiry = tenant.get("trial_ends_at")
-        if expiry:
-            if isinstance(expiry, str):
-                expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
-            else:
-                expiry_dt = expiry
-            expiry_str = expiry_dt.strftime("%d %b %Y")
-        else:
-            # Calculate from days_left
-            expiry_dt = datetime.now(timezone.utc) + timedelta(days=days_left)
-            expiry_str = expiry_dt.strftime("%d %b %Y")
-            
+        # ── 2. Account Section ─────────────────────────────────────────────────
+        user_type = tenant.get("user_type", "business").title()
+        lang = tenant.get("preferred_language", "en").upper()
         report += (
-            "🚀 *Plan*\n"
-            f"├─ Tier: {plan}\n"
-            f"├─ Status: {status}\n"
-            f"└─ Ends: {expiry_str} ({days_left}d left)\n\n"
-        )
-    else:
-        # Check both potential column names for subscription expiry
-        expiry = tenant.get("subscription_expires_at") or tenant.get("subscription_ends_at")
-        if expiry:
-            if isinstance(expiry, str):
-                expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
-            else:
-                expiry_dt = expiry
-            expiry_str = expiry_dt.strftime("%d %b %Y")
-        else:
-            expiry_str = "N/A"
-            
-        report += (
-            "🚀 *Plan*\n"
-            f"├─ Tier: {plan}\n"
-            f"├─ Status: {status}\n"
-            f"└─ Expiry: {expiry_str}\n\n"
+            "👤 *Account*\n"
+            f"├─ Name: {biz_name}\n"
+            f"├─ Type: {user_type}\n"
+            f"└─ Lang: {lang}\n\n"
         )
 
-    # ── 4. M-Pesa Section ──────────────────────────────────────────────────
-    till = tenant.get("mpesa_till")
-    if till:
-        report += f"📡 *M-Pesa*\n└─ Till: {till} ✅\n\n"
-    else:
-        report += "📡 *M-Pesa*\n└─ Not connected — /till to add\n\n"
-
-    # ── 5. Last Activity ──────────────────────────────────────────────────
-    latest_report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
-    if latest_report:
-        # Use created_at or updated_at from report
-        created_at = latest_report.get("created_at")
-        if created_at:
-            if isinstance(created_at, str):
-                activity_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            else:
-                activity_dt = created_at
-            activity_str = activity_dt.strftime("%d %b %Y")
+        # ── 3. Plan Section ────────────────────────────────────────────────────
+        admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+        is_superadmin = admin_id and str(tid) == str(admin_id)
+        
+        if is_superadmin:
+            plan = "Super Admin"
+            status = "Active"
         else:
-            activity_str = "Recent"
-        report += f"⏱️ *Last Activity*\n└─ Report: {activity_str}\n\n"
-    else:
-        report += "⏱️ *Last Activity*\n└─ No reports yet\n\n"
+            plan = tenant.get("plan", "trial").upper()
+            status = tenant.get("status", "active").title()
+        
+        if plan == "TRIAL":
+            days_left = tenant.get("trial_days_left", 0)
+            # Fallback for trial_ends_at schema inconsistency
+            expiry = tenant.get("trial_ends_at")
+            if expiry:
+                if isinstance(expiry, str):
+                    expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+                else:
+                    expiry_dt = expiry
+                expiry_str = expiry_dt.strftime("%d %b %Y")
+            else:
+                # Calculate from days_left
+                expiry_dt = datetime.now(timezone.utc) + timedelta(days=days_left)
+                expiry_str = expiry_dt.strftime("%d %b %Y")
+                
+            report += (
+                "🚀 *Plan*\n"
+                f"├─ Tier: {plan}\n"
+                f"├─ Status: {status}\n"
+                f"└─ Ends: {expiry_str} ({days_left}d left)\n\n"
+            )
+        else:
+            # Check both potential column names for subscription expiry
+            expiry = tenant.get("subscription_expires_at") or tenant.get("subscription_ends_at")
+            if expiry:
+                if isinstance(expiry, str):
+                    expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+                else:
+                    expiry_dt = expiry
+                expiry_str = expiry_dt.strftime("%d %b %Y")
+            else:
+                expiry_str = "N/A"
+                
+            report += (
+                "🚀 *Plan*\n"
+                f"├─ Tier: {plan}\n"
+                f"├─ Status: {status}\n"
+                f"└─ Expiry: {expiry_str}\n\n"
+            )
 
-    # ── 6. Edit Prompt ─────────────────────────────────────────────────────
-    report += "⚙️ Edit your details: /settings"
+        # ── 4. M-Pesa Section ──────────────────────────────────────────────────
+        till = tenant.get("mpesa_till")
+        if till:
+            report += f"📡 *M-Pesa*\n└─ Till: {till} ✅\n\n"
+        else:
+            report += "📡 *M-Pesa*\n└─ Not connected — /till to add\n\n"
 
-    # CF-1: Proactive redaction of KRA PIN patterns
-    import re
-    report = re.sub(r'\b[A-P]\d{9}[A-Z]\b', '[REDACTED]', report)
+        # ── 5. Last Activity ──────────────────────────────────────────────────
+        latest_report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
+        if latest_report:
+            # Use created_at or updated_at from report
+            created_at = latest_report.get("created_at")
+            if created_at:
+                if isinstance(created_at, str):
+                    activity_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                else:
+                    activity_dt = created_at
+                activity_str = activity_dt.strftime("%d %b %Y")
+            else:
+                activity_str = "Recent"
+            report += f"⏱️ *Last Activity*\n└─ Report: {activity_str}\n\n"
+        else:
+            report += "⏱️ *Last Activity*\n└─ No reports yet\n\n"
 
-    await _reply(update, report)
+        # ── 6. Edit Prompt ─────────────────────────────────────────────────────
+        report += "⚙️ Edit your details: /settings"
+
+        # CF-1: Proactive redaction of KRA PIN patterns
+        import re
+        report = re.sub(r'\b[A-P]\d{9}[A-Z]\b', '[REDACTED]', report)
+
+        await _reply(update, report)
+    except Exception as exc:
+        log.exception("cmd_status_failed", telegram_id=_tg_id(update), error=str(exc))
+        await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error loading your dashboard. Please try again.")
 
 
 # ── /stop and /resume ─────────────────────────────────────────────────────────
@@ -2123,7 +2138,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tenants_resp = await asyncio.get_event_loop().run_in_executor(
         None, lambda: client.table("tenants").select("*").execute()
     )
-    all_tenants = tenants_resp.data or []
+    all_tenants = tenants_resp.data if tenants_resp and tenants_resp.data else []
     
     # P15-T1: SUPERADMIN_EXCLUDED — Exclude Chief Engineer from metrics
     tenants = [t for t in all_tenants if str(t.get("telegram_id")) != str(admin_id)]
@@ -2146,7 +2161,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     trials_resp = await asyncio.get_event_loop().run_in_executor(
         None, lambda: client.table("tenants").select("trial_days_left").eq("plan", "trial").execute()
     )
-    trial_data = trials_resp.data or []
+    trial_data = trials_resp.data if trials_resp and trials_resp.data else []
     avg_trial = sum(t["trial_days_left"] for t in trial_data) / len(trial_data) if trial_data else 0
     
     # 4. Monthly Revenue
@@ -2154,7 +2169,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     rev_resp = await asyncio.get_event_loop().run_in_executor(
         None, lambda: client.table("payment_requests").select("amount, tenant_id").eq("status", "confirmed").gte("confirmed_at", this_month).execute()
     )
-    all_rev_data = rev_resp.data or []
+    all_rev_data = rev_resp.data if rev_resp and rev_resp.data else []
     
     # P15-T1: SUPERADMIN_EXCLUDED — Exclude test payments from Chief Engineer
     rev_data = [r for r in all_rev_data if str(r.get("tenant_id")) != str(admin_uuid)]
@@ -2166,7 +2181,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     expired_resp = await asyncio.get_event_loop().run_in_executor(
         None, lambda: client.table("tenants").select("id").eq("status", "lapsed").execute()
     )
-    expired_count = len(expired_resp.data or [])
+    expired_count = len(expired_resp.data if expired_resp and expired_resp.data else [])
 
     report = (
         "👑 *Chief Engineer Dashboard*\n\n"

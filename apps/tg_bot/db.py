@@ -81,19 +81,22 @@ def update_tenant(telegram_id: int, updates: dict) -> dict:
         .eq("telegram_id", telegram_id)
         .execute()
     )
-    return resp.data[0]
+    return resp.data[0] if resp and resp.data else {}
 
 
 def get_all_active_tenants() -> list[dict]:
     """Return all tenants the scheduler should process today."""
-    resp = (
-        get_client()
-        .table("tenants")
-        .select("*")
-        .in_("status", ["active", "trial"])
-        .execute()
-    )
-    return resp.data or []
+    try:
+        resp = (
+            get_client()
+            .table("tenants")
+            .select("*")
+            .in_("status", ["active", "trial"])
+            .execute()
+        )
+        return resp.data if resp else []
+    except Exception:
+        return []
 
 
 # ── Conversation state (multi-step flows) ─────────────────────────────────────
@@ -153,7 +156,7 @@ def get_latest_report(tenant_id: str) -> Optional[dict]:
         .maybe_single()
         .execute()
     )
-    return resp.data
+    return resp.data if resp else None
 
 
 # ── Statements (P3-T4) ────────────────────────────────────────────────────────
@@ -183,7 +186,7 @@ def save_statement(
         )
         .execute()
     )
-    return resp.data[0]
+    return resp.data[0] if resp and resp.data else {}
 
 
 def get_latest_statement(tenant_id: str) -> Optional[dict]:
@@ -198,7 +201,7 @@ def get_latest_statement(tenant_id: str) -> Optional[dict]:
         .maybe_single()
         .execute()
     )
-    return resp.data
+    return resp.data if resp else None
 
 
 def update_tenant_sha(telegram_id: int, sha_number: str) -> dict:
@@ -215,7 +218,7 @@ def get_tenants_by_type(user_type: str) -> List[dict]:
         .eq("user_type", user_type)
         .execute()
     )
-    return resp.data or []
+    return resp.data if resp else []
 
 
 def get_individual_obligations(telegram_id: int) -> List[dict]:
