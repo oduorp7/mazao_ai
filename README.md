@@ -69,6 +69,23 @@ Mazao AI implements a unified, stateful alerting system for Electricity (Tokens)
 4.  **Universal Stop-Gate**: All automated alerts (Utilities, Fuliza, Subscriptions) strictly respect the user `/stop` command. Paused or lapsed accounts receive zero scheduled messages.
 5.  **Automated Tier Lifecycle**: M-Pesa payments of KES 149 and 399 automatically activate **Core** and **Pro** tiers for 30 days. Expired subscriptions are automatically downgraded to the **Free** tier.
 
+### 💳 Fuliza Intelligence Output
+
+When a user logs a Fuliza entry via `/fuliza`, the bot returns a rich intelligence response:
+
+- **Full View**: Code, Borrowed Amount, Access Fee, Total Deducted, Outstanding Balance, Due Date, Days Left
+- **Quick View**: One-line summary (e.g., `KES 193.49 due 24 May (30d)`)
+- **Risk View**: Deterministic label based on days remaining:
+
+| Risk | Condition |
+|------|-----------|
+| 🟢 LOW | > 14 days |
+| 🟡 MEDIUM | 7–14 days |
+| 🟠 HIGH | < 7 days |
+| 🔴 OVERDUE | ≤ 0 days |
+
+- **Daily Cost View**: `access_fee / days_left` when fee data is available
+
 ### 📅 Backfill & Historical Learning
 
 Mazao AI supports backfilling historical utility data (past token purchases or gas refills) to accelerate model learning without destabilizing current predictions.

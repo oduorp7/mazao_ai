@@ -2378,17 +2378,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             days_left = (due_date - datetime.utcnow().date()).days
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             
-            details = ""
-            if code: details += f"🧾 *Code:* {code}\n"
-            if amount_borrowed: details += f"💸 *Borrowed:* KES {amount_borrowed:,.2f}\n"
-            if fee: details += f"📈 *Fee:* KES {fee:,.2f}\n"
-            if details: details += "\n"
+            # ── Fuliza Intelligence Output (P17-T5G) ──
+            # Full View
+            full_lines = []
+            if code: full_lines.append(f"🧾 *Code:* {code}")
+            if amount_borrowed is not None: full_lines.append(f"💸 *Borrowed:* KES {amount_borrowed:,.2f}")
+            if fee is not None: full_lines.append(f"📈 *Access Fee:* KES {fee:,.2f}")
+            if total_deducted is not None: full_lines.append(f"🧮 *Total Deducted:* KES {total_deducted:,.2f}")
+            full_lines.append(f"💰 *Outstanding:* KES {balance:,.2f}")
+            full_lines.append(f"📅 *Due Date:* {due_date.strftime('%d %b %Y')}")
+            full_lines.append(f"⏳ *Time Left:* {days_left} day{'s' if days_left != 1 else ''}")
+            full_view = "\n".join(full_lines)
+            
+            # Quick View
+            quick_view = f"KES {balance:,.2f} due {due_date.strftime('%d %b')} ({days_left}d)"
+            
+            # Risk View
+            if days_left <= 0:
+                risk_label, risk_icon = "OVERDUE", "🔴"
+            elif days_left < 7:
+                risk_label, risk_icon = "HIGH", "🟠"
+            elif days_left <= 14:
+                risk_label, risk_icon = "MEDIUM", "🟡"
+            else:
+                risk_label, risk_icon = "LOW", "🟢"
+            risk_line = f"{risk_icon} *Risk:* {risk_label}"
+            
+            # Daily Cost View
+            daily_cost_line = ""
+            if fee is not None and days_left > 0:
+                daily_cost = fee / days_left
+                daily_cost_line = f"💹 *Daily Cost:* KES {daily_cost:,.2f}/day"
                 
             await _reply(update, M.FULIZA_PARSED_CONFIRMATION.format(
-                details=details,
-                balance=balance,
-                due_date=due_date.strftime("%d %b %Y"),
-                days_until_due=days_left
+                full_view=full_view,
+                quick_view=quick_view,
+                risk_line=risk_line,
+                daily_cost_line=daily_cost_line
             ))
         except Exception as exc:
             log.error("fuliza_parse_error", error=str(exc))

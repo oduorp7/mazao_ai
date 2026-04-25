@@ -144,7 +144,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
     @patch('apps.tg_bot.handlers.db')
     @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
     async def test_fuliza_full_sms_parsing(self, mock_reply, mock_db):
-        """Verify Full SMS format extracts all fields correctly."""
+        """Verify Full SMS format extracts all fields and renders intelligence output."""
         mock_db.get_tenant.return_value = self.tenant
         mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
         
@@ -161,17 +161,21 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(insert_args["total_deducted"], 193.49)
         self.assertEqual(insert_args["balance"], 193.49)
         
-        # Verify reply contains extra details
+        # Verify intelligence output
         mock_reply.assert_called()
         reply_text = mock_reply.call_args[0][1]
         self.assertIn("🧾 *Code:* UDOL822FF5", reply_text)
         self.assertIn("💸 *Borrowed:* KES 191.57", reply_text)
-        self.assertIn("📈 *Fee:* KES 1.92", reply_text)
+        self.assertIn("📈 *Access Fee:* KES 1.92", reply_text)
+        self.assertIn("🧮 *Total Deducted:* KES 193.49", reply_text)
+        self.assertIn("💰 *Outstanding:* KES 193.49", reply_text)
+        self.assertIn("Quick View", reply_text)
+        self.assertIn("*Risk:*", reply_text)
 
     @patch('apps.tg_bot.handlers.db')
     @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
     async def test_fuliza_quick_entry_parsing(self, mock_reply, mock_db):
-        """Verify Quick Entry format works."""
+        """Verify Quick Entry format renders safely without code/fee."""
         mock_db.get_tenant.return_value = self.tenant
         mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
         
@@ -186,6 +190,9 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         mock_reply.assert_called()
         reply_text = mock_reply.call_args[0][1]
         self.assertIn("💸 *Borrowed:* KES 191.57", reply_text)
+        self.assertIn("💰 *Outstanding:* KES 193.49", reply_text)
+        self.assertNotIn("🧾 *Code:*", reply_text)  # No code in quick entry
+        self.assertNotIn("Daily Cost", reply_text)  # No fee = no daily cost
 
     @patch('apps.tg_bot.handlers.db')
     @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
@@ -207,6 +214,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         mock_reply.assert_called()
         reply_text = mock_reply.call_args[0][1]
         self.assertIn("💰 *Outstanding:* KES 450.00", reply_text)
+        self.assertIn("*Risk:*", reply_text)
 
     @patch('apps.tg_bot.handlers.db')
     @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
@@ -225,6 +233,76 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         
         mock_db.get_client().table().insert.assert_not_called()
         mock_reply.assert_called_with(self.update, M.FULIZA_PARSE_FAILED)
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    @patch('apps.tg_bot.handlers.datetime')
+    async def test_fuliza_risk_high(self, mock_dt, mock_reply, mock_db):
+        """Verify HIGH risk for days_left < 7."""
+        from datetime import date, datetime as real_dt
+        mock_dt.strptime = real_dt.strptime
+        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 20)  # 4 days before due
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        self.update.effective_message.text = "191.57 24/05/2026 193.49"
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        reply_text = mock_reply.call_args[0][1]
+        self.assertIn("HIGH", reply_text)
+        self.assertIn("🟠", reply_text)
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    @patch('apps.tg_bot.handlers.datetime')
+    async def test_fuliza_risk_medium(self, mock_dt, mock_reply, mock_db):
+        """Verify MEDIUM risk for 7 <= days_left <= 14."""
+        from datetime import date, datetime as real_dt
+        mock_dt.strptime = real_dt.strptime
+        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 14)  # 10 days before due
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        self.update.effective_message.text = "191.57 24/05/2026 193.49"
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        reply_text = mock_reply.call_args[0][1]
+        self.assertIn("MEDIUM", reply_text)
+        self.assertIn("🟡", reply_text)
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    @patch('apps.tg_bot.handlers.datetime')
+    async def test_fuliza_risk_overdue(self, mock_dt, mock_reply, mock_db):
+        """Verify OVERDUE risk for days_left <= 0."""
+        from datetime import date, datetime as real_dt
+        mock_dt.strptime = real_dt.strptime
+        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 25)  # 1 day after due
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        self.update.effective_message.text = "191.57 24/05/2026 193.49"
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        reply_text = mock_reply.call_args[0][1]
+        self.assertIn("OVERDUE", reply_text)
+        self.assertIn("🔴", reply_text)
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    @patch('apps.tg_bot.handlers.datetime')
+    async def test_fuliza_daily_cost_view(self, mock_dt, mock_reply, mock_db):
+        """Verify Daily Cost appears when fee is present and days_left > 0."""
+        from datetime import date, datetime as real_dt
+        mock_dt.strptime = real_dt.strptime
+        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 14)  # 10 days before due
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        self.update.effective_message.text = "Code: UDOL822FF5\nFuliza Amount: 191.57\nFee: 1.92\nTotal: 193.49\nOutstanding: 193.49\nDue: 24/05/2026"
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        reply_text = mock_reply.call_args[0][1]
+        self.assertIn("Daily Cost", reply_text)
+        self.assertIn("KES 0.19/day", reply_text)  # 1.92 / 10 = 0.192
+
+
 
 class TestSchedulerStopGates(unittest.IsolatedAsyncioTestCase):
     """Tier A: Verify that scheduler jobs respect user stop-gates."""

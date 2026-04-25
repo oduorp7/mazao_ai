@@ -555,10 +555,12 @@ Example: `191.57 24/05/2026 193.49`
 
 FULIZA_PARSED_CONFIRMATION = """
 ✅ *Fuliza Recorded*
-{details}
-💰 *Outstanding:* KES {balance:,.2f}
-📅 *Due Date:* {due_date}
-⏳ *Time left:* {days_until_due} days
+
+{full_view}
+━━━━━━━━━━━━━━━━━━━━
+📋 *Quick View:* {quick_view}
+{risk_line}
+{daily_cost_line}
 """
 
 
