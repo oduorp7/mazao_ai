@@ -86,6 +86,16 @@ When a user logs a Fuliza entry via `/fuliza`, the bot returns a rich intelligen
 
 - **Daily Cost View**: `access_fee / days_left` when fee data is available
 
+### 📊 Fuliza Intelligence Dashboard (P17-T5H)
+
+Mazao AI transforms raw Fuliza interactions into a professional credit management dashboard.
+
+- **Dashboard-First View**: Triggering `/fuliza` immediately displays your current status, including outstanding balance, due date, time left, and a history of the last 3 entries with visual risk markers.
+- **Multi-Entry Sessions**: Log multiple Fuliza records in a single session without state interruptions. Simply paste one SMS after another.
+- **Duplicate Protection**: The system automatically detects and blocks duplicate entries by code, surface-mounting the existing record details using the canonical T5G intelligence format.
+- **Session Closure**: Use `/done`, `/cancel`, or `/menu` to finalize your logging session and receive a completion summary.
+- **Pro-Tier Intelligence (P17-T5I)**: Advanced analytics including **Monthly Fee Burden** (total spent on Fuliza fees this month), **30-Day Frequency** (usage velocity), and **Repayment Nudges**. Access is restricted to Pro users.
+
 ### 📅 Backfill & Historical Learning
 
 Mazao AI supports backfilling historical utility data (past token purchases or gas refills) to accelerate model learning without destabilizing current predictions.

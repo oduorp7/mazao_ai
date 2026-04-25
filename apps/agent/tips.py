@@ -25,7 +25,7 @@ log = get_logger(__name__)
 
 # Hard cap on generation time. If the free model is slow/rate-limited,
 # we abort quickly and the user sees the normal response without a tip.
-TIP_TIMEOUT_SECONDS = 6.0
+TIP_TIMEOUT_SECONDS = 12.0
 
 SYSTEM_PROMPT = (
     "You are MazaoAI, a warm, brief energy coach for Kenyan households. "

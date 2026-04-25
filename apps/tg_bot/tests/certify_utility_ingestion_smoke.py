@@ -163,7 +163,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         
         # Verify intelligence output
         mock_reply.assert_called()
-        reply_text = mock_reply.call_args[0][1]
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
         self.assertIn("🧾 *Code:* UDOL822FF5", reply_text)
         self.assertIn("💸 *Borrowed:* KES 191.57", reply_text)
         self.assertIn("📈 *Access Fee:* KES 1.92", reply_text)
@@ -188,7 +188,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(insert_args["amount_borrowed"], 191.57)
         self.assertEqual(insert_args["balance"], 193.49)
         mock_reply.assert_called()
-        reply_text = mock_reply.call_args[0][1]
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
         self.assertIn("💸 *Borrowed:* KES 191.57", reply_text)
         self.assertIn("💰 *Outstanding:* KES 193.49", reply_text)
         self.assertNotIn("🧾 *Code:*", reply_text)  # No code in quick entry
@@ -212,7 +212,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("code", insert_args)
         
         mock_reply.assert_called()
-        reply_text = mock_reply.call_args[0][1]
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
         self.assertIn("💰 *Outstanding:* KES 450.00", reply_text)
         self.assertIn("*Risk:*", reply_text)
 
@@ -247,7 +247,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         self.update.effective_message.text = "191.57 24/05/2026 193.49"
         from apps.tg_bot import handlers
         await handlers.handle_message(self.update, self.context)
-        reply_text = mock_reply.call_args[0][1]
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
         self.assertIn("HIGH", reply_text)
         self.assertIn("🟠", reply_text)
 
@@ -264,7 +264,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         self.update.effective_message.text = "191.57 24/05/2026 193.49"
         from apps.tg_bot import handlers
         await handlers.handle_message(self.update, self.context)
-        reply_text = mock_reply.call_args[0][1]
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
         self.assertIn("MEDIUM", reply_text)
         self.assertIn("🟡", reply_text)
 
@@ -281,7 +281,7 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         self.update.effective_message.text = "191.57 24/05/2026 193.49"
         from apps.tg_bot import handlers
         await handlers.handle_message(self.update, self.context)
-        reply_text = mock_reply.call_args[0][1]
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
         self.assertIn("OVERDUE", reply_text)
         self.assertIn("🔴", reply_text)
 
@@ -298,10 +298,185 @@ class TestFulizaInputContract(unittest.IsolatedAsyncioTestCase):
         self.update.effective_message.text = "Code: UDOL822FF5\nFuliza Amount: 191.57\nFee: 1.92\nTotal: 193.49\nOutstanding: 193.49\nDue: 24/05/2026"
         from apps.tg_bot import handlers
         await handlers.handle_message(self.update, self.context)
-        reply_text = mock_reply.call_args[0][1]
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
         self.assertIn("Daily Cost", reply_text)
         self.assertIn("KES 0.19/day", reply_text)  # 1.92 / 10 = 0.192
 
+    @patch('apps.tg_bot.handlers.is_feature_allowed')
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_fuliza_dashboard_shows_before_prompt(self, mock_reply, mock_db, mock_allowed):
+        """Verify /fuliza command shows dashboard before prompt."""
+        mock_allowed.return_value = True
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_client().table().select().eq().order().limit().execute.return_value.data = [
+            {"balance": 1000, "due_date": "2026-05-30", "code": "ABC", "access_fee": 10}
+        ]
+        
+        from apps.tg_bot import handlers
+        await handlers.cmd_fuliza(self.update, self.context)
+        
+        # Verify two replies: Dashboard then Prompt
+        self.assertEqual(mock_reply.call_count, 2)
+        dashboard_call = mock_reply.call_args_list[0]
+        prompt_call = mock_reply.call_args_list[1]
+        
+        self.assertIn("📊 *Fuliza Status*", dashboard_call[0][1])
+        self.assertIn("💳 *Fuliza Entry*", prompt_call[0][1])
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_fuliza_multi_entry_persists_state(self, mock_reply, mock_db):
+        """Verify state is NOT cleared after successful entry."""
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        mock_db.get_client().table().select().eq().eq().limit().execute.return_value.data = [] # No duplicate
+        
+        self.update.effective_message.text = "191.57 24/05/2026 193.49"
+        
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        
+        # Verify clear_conv_state was NOT called
+        mock_db.clear_conv_state.assert_not_called()
+        self.assertIn("📥 Paste another Fuliza SMS", mock_reply.call_args[0][1])
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    @patch('apps.tg_bot.handlers.datetime')
+    async def test_fuliza_duplicate_code_blocked(self, mock_dt, mock_reply, mock_db):
+        """Verify duplicate code returns existing entry and blocks insert."""
+        from datetime import date, datetime as real_dt
+        mock_dt.strptime = real_dt.strptime
+        # Explicitly setup the chain to return a real date object
+        mock_utcnow = MagicMock()
+        mock_utcnow.date.return_value = date(2026, 5, 20)
+        mock_dt.utcnow.return_value = mock_utcnow
+        
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        
+        # Mock existing entry
+        mock_db.get_client().table().select().eq().eq().limit().execute.return_value.data = [{
+            "code": "DUP123",
+            "balance": 500.0,
+            "due_date": "2026-05-25",
+            "amount_borrowed": 490.0,
+            "access_fee": 5.0,
+            "total_deducted": 495.0
+        }]
+        
+        self.update.effective_message.text = "Code: DUP123\nFuliza Amount: 490\nFee: 5\nTotal: 495\nOutstanding: 500\nDue: 25/05/2026"
+        
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        
+        # Verify insert was NOT called
+        mock_db.get_client().table().insert.assert_not_called()
+        
+        # Verify replies
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
+        self.assertIn("⚠️ *Already Recorded*", reply_text)
+        self.assertIn("🧾 *Code:* DUP123", reply_text)
+        self.assertIn("📥 Paste another Fuliza SMS", reply_text)
+        self.assertIn("Quick View", reply_text)
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_fuliza_done_exits_state(self, mock_reply, mock_db):
+        """Verify /done clears state and exits session."""
+        mock_db.get_conv_state.return_value = {"state": "awaiting_fuliza"}
+        self.update.effective_message.text = "/done"
+        
+        from apps.tg_bot import handlers
+        await handlers.handle_message(self.update, self.context)
+        
+        mock_db.clear_conv_state.assert_called_once()
+        mock_reply.assert_called()
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
+        self.assertIn("✅ *Fuliza session complete.*", reply_text)
+
+
+
+
+    @patch('apps.tg_bot.handlers.is_feature_allowed')
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    @patch('apps.tg_bot.handlers.datetime')
+    async def test_fuliza_pro_intelligence_visibility(self, mock_dt, mock_reply, mock_db, mock_allowed):
+        """Verify Pro users see advanced Fuliza intelligence."""
+        from datetime import date, datetime as real_dt
+        mock_dt.strptime = real_dt.strptime
+        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 20)
+        
+        # Pro user
+        mock_db.get_tenant.return_value = {**self.tenant, "plan": "pro"}
+        mock_allowed.side_effect = lambda tid, feature: True if feature == "fuliza_intelligence" else True
+        
+        # Mock recent history (3 entries for dashboard)
+        mock_db.get_client().table().select().eq().order().limit().execute.return_value.data = [
+            {"balance": 1000, "due_date": "2026-05-25", "code": "ABC", "access_fee": 10}
+        ]
+        
+        # Mock stats (for monthly burden and frequency)
+        # 2 entries in current month (May)
+        mock_db.get_client().table().select().eq().gte().execute.return_value.data = [
+            {"access_fee": 10, "created_at": "2026-05-10T12:00:00Z"},
+            {"access_fee": 15, "created_at": "2026-05-15T12:00:00Z"}
+        ]
+        
+        from apps.tg_bot import handlers
+        await handlers.cmd_fuliza(self.update, self.context)
+        
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
+        self.assertIn("Financial Insight (Pro)", reply_text)
+        self.assertIn("Monthly Fee Burden: KES 25.00", reply_text)
+        self.assertIn("30-Day Frequency: 2 entries", reply_text)
+
+    @patch('apps.tg_bot.handlers.is_feature_allowed')
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_fuliza_core_hidden_intelligence(self, mock_reply, mock_db, mock_allowed):
+        """Verify Core users do NOT see advanced Fuliza intelligence."""
+        mock_db.get_tenant.return_value = {**self.tenant, "plan": "core"}
+        mock_allowed.side_effect = lambda tid, feature: False if feature == "fuliza_intelligence" else True
+        
+        mock_db.get_client().table().select().eq().order().limit().execute.return_value.data = []
+        
+        from apps.tg_bot import handlers
+        await handlers.cmd_fuliza(self.update, self.context)
+        
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
+        self.assertNotIn("Financial Insight (Pro)", reply_text)
+
+    @patch('apps.tg_bot.handlers.is_feature_allowed')
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    @patch('apps.tg_bot.handlers.datetime')
+    async def test_fuliza_frequency_signal(self, mock_dt, mock_reply, mock_db, mock_allowed):
+        """Verify frequent-use nudge appears when threshold (>5) exceeded."""
+        from datetime import date, datetime as real_dt
+        mock_dt.strptime = real_dt.strptime
+        mock_dt.utcnow.return_value.date.return_value = date(2026, 5, 20)
+        
+        mock_db.get_tenant.return_value = {**self.tenant, "plan": "pro"}
+        mock_allowed.return_value = True
+        
+        # 7 entries in last 30 days (Stats Query)
+        mock_db.get_client().table().select().eq().gte().execute.return_value.data = [{"access_fee": 5, "created_at": "2026-05-10"}] * 7
+        
+        # Mock recent history (3 entries for dashboard - History Query)
+        mock_db.get_client().table().select().eq().order().limit().execute.return_value.data = [
+            {"balance": 1000, "due_date": "2026-05-25", "code": "ABC", "access_fee": 10}
+        ]
+        
+        from apps.tg_bot import handlers
+        await handlers.cmd_fuliza(self.update, self.context)
+        
+        reply_text = "".join(call[0][1] for call in mock_reply.call_args_list)
+        self.assertIn("7 entries", reply_text)
+        # Check for nudge text from messages.py
+        self.assertIn("High Frequency", reply_text)
 
 
 class TestSchedulerStopGates(unittest.IsolatedAsyncioTestCase):

@@ -537,6 +537,39 @@ Your gas is estimated to run out in *{days_remaining} days* ({depletion_date}).
 To log a refill later, use /gas.
 """
 
+FULIZA_DASHBOARD = """
+📊 *Fuliza Status*
+
+{latest_section}
+
+{intel_section}
+🧾 *Recent History*
+{history_lines}
+"""
+
+FULIZA_DUPLICATE_BLOCKED = """
+⚠️ *Already Recorded*
+Code `{code}` has already been logged.
+
+{full_view}
+━━━━━━━━━━━━━━━━━━━━
+📋 *Quick View:* {quick_view}
+{risk_line}
+{daily_cost_line}
+"""
+
+FULIZA_MULTI_ENTRY_HINT = "\n\n📥 Paste another Fuliza SMS or type /done to finish."
+
+FULIZA_PRO_INTEL_SECTION = """
+💡 *Financial Insight (Pro)*
+• Monthly Fee Burden: KES {monthly_burden}
+• 30-Day Frequency: {usage_count} entries
+{nudge}"""
+
+FULIZA_INSIGHT_FREQUENT_USE = "⚠️ *High Frequency:* You are using Fuliza often this month. Consider checking your cashflow patterns."
+
+FULIZA_SESSION_DONE = "✅ *Fuliza session complete.* Your entries have been saved."
+
 FULIZA_SMS_PROMPT = """
 💳 *Fuliza Entry*
 

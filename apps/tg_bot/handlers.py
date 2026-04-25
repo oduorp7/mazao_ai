@@ -1788,9 +1788,97 @@ async def cmd_fuliza(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not await is_feature_allowed(str(tenant["id"]), "utility_tracking"):
         await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Loan Tracking", upgrade_link="/upgrade"))
         return
-        
+
+    # P17-T5H: Dashboard-first flow — show status before prompt
+    try:
+        tenant_id_str = str(tenant["id"])
+        rows = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: db.get_client().table("fuliza_entries")
+                .select("balance,due_date,code,access_fee")
+                .eq("tenant_id", tenant_id_str)
+                .order("created_at", desc=True)
+                .limit(3)
+                .execute()
+        )
+        if rows and hasattr(rows, "data") and isinstance(rows.data, list) and rows.data:
+            today = datetime.utcnow().date()
+            # Latest entry
+            latest = rows.data[0]
+            if not latest.get("due_date") or not isinstance(latest["due_date"], str):
+                raise ValueError("Invalid due_date")
+            l_due = datetime.strptime(latest["due_date"], "%Y-%m-%d").date()
+            l_days = (l_due - today).days
+            l_risk = ("🔴 OVERDUE" if l_days <= 0 else "🟠 HIGH" if l_days < 7
+                      else "🟡 MEDIUM" if l_days <= 14 else "🟢 LOW")
+            latest_section = (
+                f"💰 *Outstanding:* KES {float(latest['balance']):,.2f}\n"
+                f"📅 *Due:* {l_due.strftime('%d %b %Y')}\n"
+                f"⏳ *Days Left:* {l_days}\n"
+                f"{l_risk}"
+            )
+            # History lines
+            history_parts = []
+            for r in rows.data:
+                if not r.get("due_date") or not isinstance(r["due_date"], str):
+                    continue
+                r_due = datetime.strptime(r["due_date"], "%Y-%m-%d").date()
+                r_days = (r_due - today).days
+                r_risk = ("🔴" if r_days <= 0 else "🟠" if r_days < 7
+                          else "🟡" if r_days <= 14 else "🟢")
+                history_parts.append(
+                    f"• KES {float(r['balance']):,.2f} → {r_due.strftime('%d %b')} {r_risk}"
+                )
+
+            # P17-T5I: Pro-tier Intelligence Engine
+            intel_section = ""
+            if await is_feature_allowed(tenant_id_str, "fuliza_intelligence"):
+                try:
+                    month_start = today.replace(day=1).strftime("%Y-%m-%d")
+                    last_30d = (today - timedelta(days=30)).strftime("%Y-%m-%d")
+                    
+                    stats = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: db.get_client().table("fuliza_entries")
+                            .select("access_fee,created_at")
+                            .eq("tenant_id", tenant_id_str)
+                            .gte("created_at", last_30d)
+                            .execute()
+                    )
+                    if stats and hasattr(stats, "data") and isinstance(stats.data, list):
+                        monthly_burden = sum(float(r["access_fee"] or 0) for r in stats.data if r["created_at"] >= month_start)
+                        usage_count = len(stats.data)
+                        
+                        # Pattern Signal (P17-T5I)
+                        nudge_text = ""
+                        if usage_count > 5:
+                            nudge_text = M.FULIZA_INSIGHT_FREQUENT_USE
+                            
+                        intel_section = M.FULIZA_PRO_INTEL_SECTION.format(
+                            monthly_burden=f"{monthly_burden:,.2f}",
+                            usage_count=usage_count,
+                            nudge=nudge_text
+                        )
+                except Exception as ex_intel:
+                    log.warning("fuliza_intel_failed", error=str(ex_intel))
+
+            await _reply(update, M.FULIZA_DASHBOARD.format(
+                latest_section=latest_section,
+                intel_section=intel_section,
+                history_lines="\n".join(history_parts)
+            ))
+    except Exception:
+        pass  # Fail open: show prompt even if dashboard fails
+
     await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_fuliza"))
     await _reply(update, M.FULIZA_SMS_PROMPT)
+
+
+async def cmd_fuliza_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Exit multi-entry Fuliza session."""
+    tid = _tg_id(update)
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+    await _reply(update, M.FULIZA_SESSION_DONE)
 
 
 # ── /subscribe & /subscriptions (P5-T1) ─────────────────────────────────────
@@ -2119,10 +2207,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # P10-T1: Command interruption check
     if text.startswith("/"):
-        if state != "idle":
+        # P17-T5H: Allow session-closure commands to fall through to state handlers
+        if state == "awaiting_fuliza" and text.lower() in ("/done", "/cancel", "/menu"):
+            pass 
+        elif state != "idle":
             log.info("state_cleared_by_command", telegram_id=tid, state=state, command=text)
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-        return
+            return
+        else:
+            return
 
     if state == "awaiting_settings_name":
         if len(text) < 2:
@@ -2318,6 +2411,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
     if state == "awaiting_fuliza":
+        # P17-T5H: /done exits Fuliza multi-entry session
+        if text.lower() in ("/done", "/cancel", "/menu"):
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            await _reply(update, M.FULIZA_SESSION_DONE)
+            return
+
         # P17-T5: Multi-strategy Fuliza Parsing
         balance, due_date, code, amount_borrowed, fee, total_deducted = None, None, None, None, None, None
         d_str = None
@@ -2359,9 +2458,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             fmt = "%d/%m/%Y" if "/" in d_str else "%Y-%m-%d"
             due_date = datetime.strptime(d_str, fmt).date()
             tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
-            
+            tenant_id_str = str(tenant["id"])
+
+            # P17-T5H: Duplicate code guard
+            if code:
+                dup_resp = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: db.get_client().table("fuliza_entries")
+                        .select("id,balance,due_date,amount_borrowed,access_fee,total_deducted,code")
+                        .eq("tenant_id", tenant_id_str)
+                        .eq("code", code)
+                        .limit(1)
+                        .execute()
+                )
+                if dup_resp and hasattr(dup_resp, "data") and isinstance(dup_resp.data, list) and dup_resp.data:
+                    # Return existing entry in T5G format
+                    ex = dup_resp.data[0]
+                    if not ex.get("due_date") or not isinstance(ex["due_date"], str):
+                        raise ValueError("Invalid due_date")
+                    ex_due = datetime.strptime(ex["due_date"], "%Y-%m-%d").date()
+                    ex_days = (ex_due - datetime.utcnow().date()).days
+                    ex_bal = float(ex["balance"])
+                    ex_fee = float(ex["access_fee"]) if ex.get("access_fee") else None
+                    ex_amtb = float(ex["amount_borrowed"]) if ex.get("amount_borrowed") else None
+                    ex_total = float(ex["total_deducted"]) if ex.get("total_deducted") else None
+                    ex_full_lines = []
+                    if ex.get("code"): ex_full_lines.append(f"🧾 *Code:* {ex['code']}")
+                    if ex_amtb is not None: ex_full_lines.append(f"💸 *Borrowed:* KES {ex_amtb:,.2f}")
+                    if ex_fee is not None: ex_full_lines.append(f"📈 *Access Fee:* KES {ex_fee:,.2f}")
+                    if ex_total is not None: ex_full_lines.append(f"🧮 *Total Deducted:* KES {ex_total:,.2f}")
+                    ex_full_lines.append(f"💰 *Outstanding:* KES {ex_bal:,.2f}")
+                    ex_full_lines.append(f"📅 *Due Date:* {ex_due.strftime('%d %b %Y')}")
+                    ex_full_lines.append(f"⏳ *Time Left:* {ex_days} day{'s' if ex_days != 1 else ''}")
+                    ex_risk_icon = ("🔴" if ex_days <= 0 else "🟠" if ex_days < 7 else "🟡" if ex_days <= 14 else "🟢")
+                    ex_risk_label = ("OVERDUE" if ex_days <= 0 else "HIGH" if ex_days < 7 else "MEDIUM" if ex_days <= 14 else "LOW")
+                    ex_daily = f"💹 *Daily Cost:* KES {ex_fee/ex_days:,.2f}/day" if ex_fee and ex_days > 0 else ""
+                    await _reply(update, M.FULIZA_DUPLICATE_BLOCKED.format(
+                        code=code,
+                        full_view="\n".join(ex_full_lines),
+                        quick_view=f"KES {ex_bal:,.2f} due {ex_due.strftime('%d %b')} ({ex_days}d)",
+                        risk_line=f"{ex_risk_icon} *Risk:* {ex_risk_label}",
+                        daily_cost_line=ex_daily
+                    ))
+                    await _reply(update, M.FULIZA_MULTI_ENTRY_HINT)
+                    return
+
             insert_data = {
-                "tenant_id": str(tenant["id"]),
+                "tenant_id": tenant_id_str,
                 "balance": balance,
                 "due_date": due_date.isoformat(),
             }
@@ -2376,7 +2519,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             
             days_left = (due_date - datetime.utcnow().date()).days
-            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            # P17-T5H: DO NOT clear state — keep multi-entry session alive
             
             # ── Fuliza Intelligence Output (P17-T5G) ──
             # Full View
@@ -2416,6 +2559,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 risk_line=risk_line,
                 daily_cost_line=daily_cost_line
             ))
+            # P17-T5H: multi-entry hint
+            await _reply(update, M.FULIZA_MULTI_ENTRY_HINT)
         except Exception as exc:
             log.error("fuliza_parse_error", error=str(exc))
             await _reply(update, "❌ Error saving Fuliza entry.")

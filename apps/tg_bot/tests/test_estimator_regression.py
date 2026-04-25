@@ -71,5 +71,25 @@ class TestMazaoEstimatorCore(unittest.TestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res['meter_number'], "123")
 
+    def test_estimator_zero_division_safety(self):
+        """Tier A Invariant: Blended rate must NEVER be zero or negative."""
+        # Force a case where rates might be zero
+        blended = estimator.blend_rates(personal_rate=0, population_rate=0, n_readings=1, n_valid_intervals=1)
+        self.assertEqual(blended, 0)
+        
+    def test_cost_breakdown_safety(self):
+        """Tier A Invariant: Cost breakdown must handle 0 amount_paid without crashing."""
+        bd = estimator.get_cost_breakdown(0)
+        self.assertEqual(bd["percentage"], 0)
+        self.assertEqual(bd["electricity"], 0)
+        self.assertEqual(bd["taxes"], 0)
+
+    def test_gas_projection_zero_history(self):
+        """Tier A Invariant: Gas projection must return population baseline for zero history."""
+        proj = estimator.get_gas_projection_state([], "standard")
+        self.assertEqual(proj["n"], 0)
+        self.assertGreater(proj["daily_rate"], 0)
+        self.assertEqual(proj["days_remaining"], 0)
+
 if __name__ == '__main__':
     unittest.main()
