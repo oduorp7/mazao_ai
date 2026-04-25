@@ -377,6 +377,40 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _render_tokens_status(query, tid, tenant)
         return
 
+    # P17-T6E: Gas Dashboard Parity Callbacks
+    elif data == "gas_add_new":
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_gas"))
+        await query.edit_message_text(M.GAS_SMS_PROMPT)
+        return
+
+    elif data == "gas_change_htype":
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        current_htype = tenant.get("household_type")
+        keyboard = []
+        for code, label in HOUSEHOLD_TYPE_LABELS.items():
+            prefix = "✅ " if current_htype == code else ""
+            btn = InlineKeyboardButton(f"{prefix}{label}", callback_data=f"g_htype_{code}")
+            keyboard.append([btn])
+        keyboard.append([InlineKeyboardButton("⬅️ Back to Status", callback_data="gas_back_to_status")])
+        
+        await query.edit_message_text(
+            "🏠 *Select your Home Type:*\n\nThis updates your gas prediction baselines.", 
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    elif data.startswith("g_htype_"):
+        new_htype = data.replace("g_htype_", "")
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"household_type": new_htype}))
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await _render_gas_status(query, tid, tenant)
+        return
+
+    elif data == "gas_back_to_status":
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        await _render_gas_status(query, tid, tenant)
+        return
+
     if data == "set_htype":
         tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
         current_htype = tenant.get("household_type")
@@ -1738,6 +1772,45 @@ async def _get_gas_projection(tid: int, tenant: Dict, refill_kg: float = 0) -> D
 
 # ── /gas (P17-T1) ────────────────────────────────────────────────────────────
 
+async def _render_gas_status(query_or_update: Update | CallbackQuery, tid: int, tenant: Dict) -> None:
+    """Renders the status card for gas."""
+    proj = await _get_gas_projection(tid, tenant)
+    
+    keyboard = [
+        [InlineKeyboardButton("➕ Log New Gas Reading", callback_data="gas_add_new")],
+        [InlineKeyboardButton("🏠 Change Home Type", callback_data="gas_change_htype")]
+    ]
+    markup = InlineKeyboardMarkup(keyboard)
+
+    # Build history table
+    rows = []
+    for r in proj["history"]:
+        d = datetime.fromisoformat(r["purchase_date"].replace("Z", "+00:00")).strftime("%d/%m")
+        rows.append(f"├ {d}: {r['amount_kg']}kg")
+    history_table = "\n".join(rows) if rows else "No entries yet."
+    
+    days_text = f"{proj['days_remaining']} days" if proj['days_remaining'] > 0 else "⚠️ Empty or Overdue"
+    
+    # P17-T1G: Source explanation
+    h_type = tenant.get("household_type", "standard")
+    src_label = estimator.get_gas_source_label(proj["n"], h_type)
+    conf = estimator.get_confidence_info(proj["n"])
+    conf_text = f"Confidence: {conf['bar']} {conf['label']}"
+
+    text = M.GAS_DASHBOARD.format(
+        depletion_date=proj["depletion_date"],
+        days_remaining=days_text,
+        daily_rate=proj["daily_rate"],
+        source_explanation=src_label,
+        history_table=history_table,
+        confidence_info=conf_text
+    )
+
+    if hasattr(query_or_update, "edit_message_text"):
+        await query_or_update.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await _reply(query_or_update, text, reply_markup=markup)
+
 async def cmd_gas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tid = _tg_id(update)
     tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
@@ -1749,38 +1822,26 @@ async def cmd_gas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Gas Tracking", upgrade_link="/upgrade"))
         return
         
+    # P15-T1A: Household type capture (Once per user)
+    h_type = tenant.get("household_type")
+    if not h_type:
+        reply_markup = _get_htype_keyboard()
+        await _reply(
+            update, 
+            "🏠 *Before we track your gas, what best describes your home?*\n\nThis helps us provide accurate predictions from day one.", 
+            reply_markup=reply_markup
+        )
+        return
+        
     # P17-T1D: Render Dashboard if history exists
     proj = await _get_gas_projection(tid, tenant)
     
     if proj["n"] > 0:
-        # Build history table
-        rows = []
-        for r in proj["history"]:
-            d = datetime.fromisoformat(r["purchase_date"].replace("Z", "+00:00")).strftime("%d/%m")
-            rows.append(f"├ {d}: {r['amount_kg']}kg")
-        history_table = "\n".join(rows) if rows else "No entries yet."
-        
-        days_text = f"{proj['days_remaining']} days" if proj['days_remaining'] > 0 else "⚠️ Empty or Overdue"
-        
-        # P17-T1G: Source explanation
-        h_type = tenant.get("household_type", "standard")
-        src_label = estimator.get_gas_source_label(proj["n"], h_type)
-        conf = estimator.get_confidence_info(proj["n"])
-        conf_text = f"Confidence: {conf['bar']} {conf['label']}"
-
-        await _reply(update, M.GAS_DASHBOARD.format(
-            depletion_date=proj["depletion_date"],
-            days_remaining=days_text,
-            daily_rate=proj["daily_rate"],
-            source_explanation=src_label,
-            history_table=history_table,
-            confidence_info=conf_text
-        ))
+        await _render_gas_status(update, tid, tenant)
     else:
-        # No history? Just show the prompt
+        # Zero entries: go straight to prompt as current
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_gas"))
         await _reply(update, M.GAS_SMS_PROMPT)
-
-    await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_gas"))
 
 
 # ── /fuliza (P4-T2) ──────────────────────────────────────────────────────────
