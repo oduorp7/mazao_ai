@@ -982,6 +982,17 @@ Try:
 
 Or type /help for all commands."""
 
+# P19-T9G1: About Command
+ABOUT_MESSAGE = """🤖 I’m Mazao AI — built by Codegx Technologies to help you track and understand your finances.
+
+I focus on:
+• M-Pesa statements
+• Electricity (tokens)
+• Gas usage
+• Oracle-grade insights
+
+Use /help to explore what I can do."""
+
 # P19-T9C: Payment UX Finalization
 PAYMENT_STK_GUIDE = """💳 You will receive an M-Pesa prompt on your phone.
 

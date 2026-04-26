@@ -227,6 +227,13 @@ def _full_name(update: Update) -> str:
     return f"{u.first_name or ''} {u.last_name or ''}".strip()
 
 
+# P19-T9G1: Referral & Control Flags
+REFERRAL_REWARDS_ENABLED = False
+
+async def cmd_about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Displays bot information (P19-T9G1)."""
+    await _reply(update, M.ABOUT_MESSAGE)
+
 async def _reply(update: Update, text: str, **kwargs) -> None:
     # CF-1: Final safety net redaction of any KRA PIN patterns (A0xxxxxxxB)
     import re
@@ -2831,7 +2838,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             amount = 149
             
-        if has_referral_discount:
+        if has_referral_discount and REFERRAL_REWARDS_ENABLED:
             amount = amount * 0.8
             
         plan_name = "Core" if amount < 300 else "Pro"

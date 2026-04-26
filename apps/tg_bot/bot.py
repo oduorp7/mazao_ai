@@ -70,6 +70,7 @@ from apps.tg_bot.handlers import (
     handle_callback,
     handle_document,
     handle_photo,
+    cmd_about, # P19-T9G1
     BOT_COMMANDS,
 )
 from apps.tg_bot.scheduler import (
@@ -86,6 +87,9 @@ load_dotenv()
 
 setup_logging()
 log = get_logger(__name__)
+
+# P19-T9G1: Referral & Control Flags
+REFERRAL_REWARDS_ENABLED = False
 
 # ── Environment & Application Setup ────────────────────────────────────────────
 
@@ -196,6 +200,7 @@ async def main() -> None:
     app.add_handler(CommandHandler("subscriptions", cmd_subscriptions))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("resume", cmd_resume))
+    app.add_handler(CommandHandler("about",  cmd_about)) # P19-T9G1
 
     # All non-command text → conversation handler
     app.add_handler(
@@ -431,7 +436,7 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
                 
                 # P10-T4: Referral Reward (Harden to first-payment only)
                 is_first_payment = tenant_data.get("status") in ["trial", "pending"]
-                if tenant_data.get("referred_by") and is_first_payment:
+                if tenant_data.get("referred_by") and is_first_payment and REFERRAL_REWARDS_ENABLED:
                     referrer_id = tenant_data["referred_by"]
                     # Tag referrer for discount
                     db.table("tenants").update({"referral_discount": True}).eq("id", referrer_id).execute()
