@@ -289,13 +289,12 @@ async def main() -> None:
             log.info("daraja_confirmation_received", payload=payload)
             
             # P0_HOTFIX_PAYLOAD_MAPPING: Explicitly map Safaricom payload to DB columns
+            # P17-T7C: Map Safaricom payload to DB schema (amount, bill_ref)
             mapping = {
-                "transaction_type": payload.get("TransactionType"),
                 "trans_id": payload.get("TransID"),
                 "trans_time": payload.get("TransTime"),
-                "trans_amount": payload.get("TransAmount"),
-                "business_short_code": payload.get("BusinessShortCode"),
-                "bill_ref_number": payload.get("BillRefNumber"),
+                "amount": payload.get("TransAmount"),
+                "bill_ref": payload.get("BillRefNumber"),
                 "msisdn": payload.get("MSISDN"),
                 "first_name": payload.get("FirstName")
             }
@@ -451,18 +450,18 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
             # P0_HOTFIX_PAYLOAD_MAPPING: Use raw_mapping if available for full field coverage
             if raw_mapping:
                 insert_data = {**raw_mapping, "tenant_id": tenant_id, "provider": parsed.provider}
-                # Ensure trans_amount is float (Safaricom sends as string)
-                if insert_data.get("trans_amount"):
-                    insert_data["trans_amount"] = float(insert_data["trans_amount"])
+                # Ensure amount is float (Safaricom sends as string)
+                if insert_data.get("amount"):
+                    insert_data["amount"] = float(insert_data["amount"])
             else:
                 insert_data = {
                     "tenant_id": tenant_id,
                     "trans_id": parsed.trans_id,
                     "trans_time": parsed.timestamp.isoformat(),
-                    "trans_amount": parsed.amount,
+                    "amount": parsed.amount,
                     "msisdn": parsed.msisdn,
                     "first_name": parsed.first_name,
-                    "bill_ref_number": parsed.bill_ref,
+                    "bill_ref": parsed.bill_ref,
                     "provider": parsed.provider
                 }
 

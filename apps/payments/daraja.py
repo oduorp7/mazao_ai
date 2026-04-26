@@ -136,3 +136,13 @@ class DarajaProvider(PaymentProvider):
         except Exception as e:
             log.error("daraja_register_url_error", error=str(e))
             return False
+
+    async def initiate_stk_push(self, phone_number: str, amount: int, account_ref: str, narrative: str = "Mazao AI Subscription") -> dict:
+        """
+        P17-T7C: Daraja STK Push Stub.
+        Fails closed until DARAJA_PASSKEY and full implementation are ready.
+        """
+        log.error("daraja_stk_push_blocked", reason="Missing DARAJA_PASSKEY or implementation stub")
+        return {
+            "error": "Daraja STK Push is not yet active in production. Please use IntaSend or check DARAJA_PASSKEY configuration."
+        }

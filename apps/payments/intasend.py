@@ -6,6 +6,8 @@ Uses the intasend Python SDK for outbound operations.
 """
 
 import os
+import re
+import asyncio
 from datetime import datetime
 from typing import Optional
 from .base import PaymentProvider, ParsedTransaction
@@ -76,3 +78,62 @@ class IntasendProvider(PaymentProvider):
                  msg="Webhook URL must be set manually in Intasend dashboard",
                  url=callback_url)
         return True
+
+    async def initiate_stk_push(self, phone_number: str, amount: int, account_ref: str, narrative: str = "Mazao AI Subscription") -> dict:
+        """Initiate STK push via Intasend SDK."""
+        token = os.getenv("INTASEND_SECRET_KEY", "")
+        publishable_key = os.getenv("INTASEND_PUBLISHABLE_KEY", "")
+
+        if not token or not publishable_key:
+            log.error("stk_push_missing_credentials")
+            return {"error": "Intasend credentials not configured"}
+
+        formatted_phone = self._format_phone(phone_number)
+        is_test = os.getenv("INTASEND_ENV", "sandbox").lower() in ("sandbox", "test")
+
+        log.info("intasend_stk_push_initiating",
+                 phone=formatted_phone,
+                 amount=amount,
+                 account_ref=account_ref,
+                 test_mode=is_test)
+
+        try:
+            from intasend import APIService
+
+            def _do_stk():
+                service = APIService(
+                    token=token,
+                    publishable_key=publishable_key,
+                    test=is_test
+                )
+                return service.collect.mpesa_stk_push(
+                    phone_number=formatted_phone,
+                    email="noreply@mazao.ai",
+                    amount=amount,
+                    narrative=narrative
+                )
+
+            response = await asyncio.get_event_loop().run_in_executor(None, _do_stk)
+
+            log.info("intasend_stk_push_success",
+                     phone=formatted_phone,
+                     amount=amount)
+            return response if isinstance(response, dict) else {"response": str(response)}
+
+        except Exception as e:
+            log.exception("intasend_stk_push_failed",
+                          phone=formatted_phone,
+                          amount=amount,
+                          error=str(e))
+            return {"error": str(e)}
+
+    def _format_phone(self, phone: str) -> str:
+        """Normalize phone to 2547XXXXXXXX format."""
+        phone = re.sub(r"[^0-9]", "", phone)
+        if phone.startswith("0"):
+            phone = "254" + phone[1:]
+        elif phone.startswith("7"):
+            phone = "254" + phone
+        elif phone.startswith("+"):
+            phone = phone.lstrip("+")
+        return phone

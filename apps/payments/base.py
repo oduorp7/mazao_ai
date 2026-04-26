@@ -24,3 +24,8 @@ class PaymentProvider(ABC):
     async def register_callback_url(self, callback_url: str) -> bool:
         """Register the webhook callback URL with the provider."""
         pass
+
+    @abstractmethod
+    async def initiate_stk_push(self, phone_number: str, amount: int, account_ref: str, narrative: str = "Mazao AI Subscription") -> dict:
+        """Initiate STK push for the active provider."""
+        pass
