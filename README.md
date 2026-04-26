@@ -191,5 +191,6 @@ python -m apps.tg_bot.bot
 
 ## 🛡️ System Certification: **STABLE**
 **Current State**: Phase 19 Daraja Production Readiness Complete.
-**Directive**: Awaiting `DARAJA_PASSKEY` for Phase 19D Live Activation.
+**Directive**: Awaiting `DARAJA_PASSKEY` for Phase 19E Live Activation.
+**Runbook**: [Daraja STK Activation Runbook](docs/runbooks/DARAJA_STK_ACTIVATION_RUNBOOK.md)
 **Stability**: Certified Sovereign-Grade. All 38 smoke tests passing.

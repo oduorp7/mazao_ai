@@ -10,7 +10,7 @@ The conversational layer will follow a strict 4-layer hierarchy:
 1.  **Layer 1: Command Handlers (Canonical)** — The primary interface for all known financial operations (`/fuliza`, `/till`, `/statement`).
 2.  **Layer 2: Deterministic System Intelligence** — Direct responses for account status and predefined insights.
 3.  **Layer 3: Rule-Based Intent Router** — A deterministic router that maps natural language (e.g., "how do I use Fuliza?") to specific tutoring flows or commands.
-4.  **Layer 4: Strictly Gated AI Fallback** — A large language model (LLM) used ONLY as a last resort for out-of-scope queries(Currently using DeepSeek V3 for financila anlysis but as the elite faang engineer in this projec, advise on we wether we can use the free mistral model for the controlled AI layer).
+4.  **Layer 4: Strictly Gated AI Fallback** — A large language model (LLM) used ONLY as a last resort for out-of-scope queries(Currently using DeepSeek V3 for financil analysis but as the elite faang engineer in this project, advise on whether we can use the free mistral model for the controlled AI layer or DeepSeek V3 is the best option?).
 
 ### Finance Boundary Policy
 - **Educational Only**: The bot explains and guides based on application data scope.
@@ -32,6 +32,7 @@ The conversational layer will follow a strict 4-layer hierarchy:
 - **T9A**: Audited and fixed Daraja callback route alignment.
 - **T9B**: Implemented native STK push and certified live flows.
 - **T9C**: Finalized payment UX with guidance and feedback messages.
+- **T9D**: Prepared official Live Activation Runbook.
 
 ---
 
@@ -39,8 +40,9 @@ The conversational layer will follow a strict 4-layer hierarchy:
 - **Payment Layer**: Native Daraja STK push certified (awaiting `DARAJA_PASSKEY`).
 - **Conversational Layer**: Hardened with deterministic routing and global interrupts.
 - **Onboarding**: Idempotent and state-aware.
+- **Runbook**: Official activation protocol prepared in `docs/runbooks/`.
 
-## Next Phase: T9D Activation
+## Next Phase: T9E Activation
 - **Trigger**: Configuration of production secrets (`DARAJA_PASSKEY`).
 - **Objective**: Full live deployment and activation of native payments.
 

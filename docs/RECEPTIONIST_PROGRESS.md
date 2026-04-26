@@ -14,7 +14,8 @@
 - [x] T9A: Callback route alignment and audit.
 - [x] T9B: Native STK push implementation and certification.
 - [x] T9C: Payment UX finalization and guidance.
-- [ ] T9D: Live Activation (Pending `DARAJA_PASSKEY`).
+- [x] T9D: Live Activation Runbook Preparation.
+- [ ] T9E: Live Activation Execution (Pending `DARAJA_PASSKEY`).
 
 ## System Readiness
 - **Business Logic**: Stable.
