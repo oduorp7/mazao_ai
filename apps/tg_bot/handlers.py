@@ -279,6 +279,9 @@ def _get_htype_keyboard(current_htype: Optional[str] = None) -> InlineKeyboardMa
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tid = _tg_id(update)
     log.info("cmd_start", telegram_id=tid)
+    
+    # P18-T8E: Clear state on start
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
 
     # P10-T4: Handle Referral deep link (start=REF_CODE)
     args = context.args
@@ -749,7 +752,11 @@ async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 # ── /help ─────────────────────────────────────────────────────────────────────
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    tenant = db.get_tenant(_tg_id(update))
+    tid = _tg_id(update)
+    tenant = db.get_tenant(tid)
+    # P18-T8E: Clear state on help
+    await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+    
     if not tenant:
         await _reply(update, M.NOT_REGISTERED)
         return
@@ -958,6 +965,8 @@ async def cmd_statement(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         tid = _tg_id(update)
+        # P18-T8E: Clear state on report
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
         # T6F-BUG-FIX: was incorrectly calling db.get_tenant synchronously, blocking
         # the event loop. Now correctly wrapped with run_in_executor.
         tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
@@ -2332,17 +2341,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         log.info("auto_detect_token_sms", user_id=update.message.from_user.id)
         return await awaiting_tokens(update, context)
 
-    # P10-T1: Command interruption check
+    # 1. Global Command Interrupt Layer (P18-T8E)
     if text.startswith("/"):
-        # P17-T5H: Allow session-closure commands to fall through to state handlers
-        if state == "awaiting_fuliza" and text.lower() in ("/done", "/cancel", "/menu"):
+        if state != "idle":
+            # P17-T5H: Fuliza session-closure commands must reach their handler for custom summary
+            if state == "awaiting_fuliza" and text.lower() in ("/done", "/cancel", "/menu"):
+                 pass 
+            else:
+                log.info("session_interrupted_by_command", telegram_id=tid, state=state, command=text)
+                await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+                
+                # Confirmation for explicit exit commands
+                if text.lower() in ("/cancel", "/done", "/menu", "/stop_session"):
+                    await _reply(update, "✅ *Action cancelled.* Session cleared.")
+                    return
+                
+                # If we reached here via handle_message (unregistered command), stop processing
+                return
+        
+        # If we are in 'idle' and hit a command in handle_message, it means it's an 
+        # unregistered command. Let it fall through to the router or fallback.
+        if state == "idle":
             pass 
-        elif state != "idle":
-            log.info("state_cleared_by_command", telegram_id=tid, state=state, command=text)
-            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-            return
-        else:
-            return
 
     if state == "awaiting_settings_name":
         if len(text) < 2:

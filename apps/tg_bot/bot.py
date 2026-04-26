@@ -193,7 +193,7 @@ async def main() -> None:
 
     # All non-command text → conversation handler
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+        MessageHandler(filters.TEXT, handle_message)
     )
 
     # Document upload handle
