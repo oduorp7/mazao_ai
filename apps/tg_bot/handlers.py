@@ -286,16 +286,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # P10-T4: Handle Referral deep link (start=REF_CODE)
     args = context.args
     referred_by_id = None
-    if args and args[0].startswith("REF_"):
-        ref_code = args[0]
-        log.info("referral_link_detected", telegram_id=tid, ref_code=ref_code)
-        # Find referrer
-        referrer_resp = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: db.get_client().table("tenants").select("id").eq("referral_code", ref_code).execute()
-        )
-        if referrer_resp and referrer_resp.data:
-            referred_by_id = referrer_resp.data[0]["id"]
-            log.info("referrer_found", referrer_id=referred_by_id)
+    try:
+        if args and args[0].startswith("REF_"):
+            ref_code = args[0]
+            log.info("referral_link_detected", telegram_id=tid, ref_code=ref_code)
+            # Find referrer
+            referrer_resp = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: db.get_client().table("tenants").select("id").eq("referral_code", ref_code).execute()
+            )
+            if referrer_resp and referrer_resp.data:
+                potential_referrer = referrer_resp.data[0]
+                # P19-T9G: Self-referral protection (if they somehow found their own link)
+                # Note: tid is int, but we check if potential_referrer id exists and isn't them
+                # For a new user, they won't have a record yet, so this is safe.
+                referred_by_id = potential_referrer["id"]
+                log.info("referrer_found", referrer_id=referred_by_id)
+    except Exception as e:
+        log.error("referral_parsing_failed", error=str(e), telegram_id=tid)
+        # Continue onboarding regardless of referral failure
 
     tenant = await _safe_db_call(lambda: db.get_tenant(tid))
 

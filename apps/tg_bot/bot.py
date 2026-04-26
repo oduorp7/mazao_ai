@@ -396,6 +396,12 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
                     "confirmed_at": datetime.now(timezone.utc).isoformat()
                 }).eq("id", request_data["id"]).execute()
                 
+                # P19-T9G: Fetch tenant data before update
+                t_resp = db.table("tenants").select("*").eq("id", tenant_id).maybe_single().execute()
+                if not t_resp or not t_resp.data:
+                    return
+                tenant_data = t_resp.data
+                
                 # Determine Plan (P17-T4D Alignment)
                 if amount >= 399:
                     new_plan = "pro"
@@ -412,35 +418,33 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
                     "subscription_expires_at": expires_at,
                     "trial_started_at": None, 
                     "trial_ends_at": None,
-                    "status": "active"
+                    "status": "active",
+                    "referral_discount": False # P19-T9G: Clear discount after use
                 }).eq("id", tenant_id).execute()
                 
                 # Notify User
-                # Get tenant telegram_id
-                t_resp = db.table("tenants").select("telegram_id, referred_by, full_name, business_name").eq("id", tenant_id).maybe_single().execute()
-                if t_resp and t_resp.data:
-                    tenant_data = t_resp.data
-                    await bot.send_message(
-                        chat_id=tenant_data["telegram_id"],
-                        text=M.PAYMENT_SUCCESS_ENHANCED,
-                        parse_mode=ParseMode.MARKDOWN
-                    )
+                await bot.send_message(
+                    chat_id=tenant_data["telegram_id"],
+                    text=M.PAYMENT_SUCCESS_ENHANCED,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                # P10-T4: Referral Reward (Harden to first-payment only)
+                is_first_payment = tenant_data.get("status") in ["trial", "pending"]
+                if tenant_data.get("referred_by") and is_first_payment:
+                    referrer_id = tenant_data["referred_by"]
+                    # Tag referrer for discount
+                    db.table("tenants").update({"referral_discount": True}).eq("id", referrer_id).execute()
                     
-                    # P10-T4: Referral Reward
-                    if tenant_data.get("referred_by"):
-                        referrer_id = tenant_data["referred_by"]
-                        # Tag referrer for discount
-                        db.table("tenants").update({"referral_discount": True}).eq("id", referrer_id).execute()
-                        
-                        # Notify Referrer
-                        ref_resp = db.table("tenants").select("telegram_id").eq("id", referrer_id).maybe_single().execute()
-                        if ref_resp and ref_resp.data:
-                            name = tenant_data.get("business_name") or tenant_data.get("full_name") or "A friend"
-                            await bot.send_message(
-                                chat_id=ref_resp.data["telegram_id"],
-                                text=M.REFERRAL_SUCCESS_REFERRER.format(name=name),
-                                parse_mode=ParseMode.MARKDOWN
-                            )
+                    # Notify Referrer
+                    ref_resp = db.table("tenants").select("telegram_id").eq("id", referrer_id).maybe_single().execute()
+                    if ref_resp and ref_resp.data:
+                        name = tenant_data.get("business_name") or tenant_data.get("full_name") or "A friend"
+                        await bot.send_message(
+                            chat_id=ref_resp.data["telegram_id"],
+                            text=M.REFERRAL_SUCCESS_REFERRER.format(name=name),
+                            parse_mode=ParseMode.MARKDOWN
+                        )
                 return
             else:
                 log.warn("subscription_payment_unmatched", ref=parsed.bill_ref)

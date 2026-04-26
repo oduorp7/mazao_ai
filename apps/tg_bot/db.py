@@ -51,22 +51,25 @@ def create_tenant(
     telegram_id: int,
     telegram_username: str,
     full_name: str,
+    referred_by: Optional[str] = None,
 ) -> dict:
     """Insert a new tenant in PENDING state. Returns the created row."""
+    payload = {
+        "telegram_id": telegram_id,
+        "telegram_username": telegram_username,
+        "full_name": full_name,
+        "status": "pending",        # pending → active after M-Pesa setup
+        "plan": "trial",            # trial | free | core | pro
+        "trial_days_left": 7,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if referred_by:
+        payload["referred_by"] = referred_by
+
     resp = (
         get_client()
         .table("tenants")
-        .insert(
-            {
-                "telegram_id": telegram_id,
-                "telegram_username": telegram_username,
-                "full_name": full_name,
-                "status": "pending",        # pending → active after M-Pesa setup
-                "plan": "trial",            # trial | free | core | pro
-                "trial_days_left": 7,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-        )
+        .insert(payload)
         .execute()
     )
     return resp.data[0]
