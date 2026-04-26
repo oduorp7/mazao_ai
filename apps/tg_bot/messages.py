@@ -951,3 +951,37 @@ What would you like to do today?
 💸 /fuliza – Fuliza insights
 📄 /statement – Upload M-Pesa statement
 ⚙️ /settings – Update profile"""
+
+# P18-T8H: Conversational Recovery Layer
+SOFT_RECOVERY_SMALLTALK = """🙂 I’m here to help with your finances.
+
+You can ask things like:
+• Show my report
+• Track gas usage
+• Upload M-Pesa statement
+
+Or use /help to get started."""
+
+SOFT_RECOVERY_META = """🤖 I’m Mazao AI — built by Codegx Technologies to help you track and understand your finances.
+
+I focus on:
+• M-Pesa statements
+• Electricity (tokens)
+• Gas usage
+• Fuliza insights
+
+What would you like to check?"""
+
+SOFT_RECOVERY_ABUSIVE = """🙂 I’m here to help.
+
+Try asking about your finances or use /help to get started."""
+
+SOFT_RECOVERY_DEFAULT_GUIDED = """I didn’t fully understand that.
+
+Try:
+/report — business summary
+/tokens — electricity usage
+/gas — gas tracking
+/fuliza — insights
+
+Or type /help for all commands."""

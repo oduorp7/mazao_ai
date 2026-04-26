@@ -2909,8 +2909,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         msg_key = router.get_guidance_message_key(intent)
         return await _reply(update, getattr(M, msg_key))
 
-    # Final Fallback
-    await _reply(update, M.UNKNOWN_MESSAGE)
+    # P18-T8H: Soft Recovery Layer (Deterministic)
+    recovery_intent = router.classify_recovery_intent(text)
+    msg_key = router.get_guidance_message_key(recovery_intent)
+    log.info("fallback_recovery_triggered", telegram_id=tid, recovery_intent=recovery_intent)
+    await _reply(update, getattr(M, msg_key))
 
 
 # ── Bot commands menu (shown in Telegram's / menu) ────────────────────────────

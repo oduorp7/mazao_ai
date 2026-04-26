@@ -18,6 +18,12 @@ INTENT_REPORT = "statement_report"
 INTENT_UPGRADE = "payment_upgrade"
 INTENT_OUT_OF_SCOPE = "out_of_scope"
 
+# P18-T8H: Recovery Intents
+INTENT_RECOVERY_SMALLTALK = "recovery_smalltalk"
+INTENT_RECOVERY_META = "recovery_meta"
+INTENT_RECOVERY_ABUSIVE = "recovery_abusive"
+INTENT_RECOVERY_DEFAULT = "recovery_default"
+
 # Patterns mapping (order matters: more specific first)
 PATTERNS = {
     INTENT_TOKENS: [r"tokens?", r"units?", r"kplc", r"electricity", r"power", r"stima"],
@@ -59,6 +65,33 @@ def classify_intent(text: str) -> Optional[str]:
                 
     return None
 
+def classify_recovery_intent(text: str) -> str:
+    """
+    Deterministically classify text into a recovery intent for fallback.
+    Always returns a string (defaults to INTENT_RECOVERY_DEFAULT).
+    """
+    if not text:
+        return INTENT_RECOVERY_DEFAULT
+        
+    text_lower = text.lower().strip()
+    
+    # 1. Abusive check
+    abusive_patterns = [r"dumb", r"stupid", r"idiot", r"brain", r"useless", r"fuck", r"fool"]
+    if any(re.search(r'\b' + p + r'\b', text_lower) for p in abusive_patterns):
+        return INTENT_RECOVERY_ABUSIVE
+        
+    # 2. Meta query check
+    meta_patterns = [r"who created you", r"what are you", r"what can you do", r"your purpose", r"how do you work"]
+    if any(p in text_lower for p in meta_patterns):
+        return INTENT_RECOVERY_META
+        
+    # 3. Smalltalk check
+    smalltalk_patterns = [r"hi", r"hello", r"hey", r"talk to me", r"mambo", r"habari"]
+    if any(re.search(r'\b' + p + r'\b', text_lower) for p in smalltalk_patterns):
+        return INTENT_RECOVERY_SMALLTALK
+        
+    return INTENT_RECOVERY_DEFAULT
+
 def get_guidance_message_key(intent: str) -> str:
     """Map intent to a message template key in messages.py."""
     mapping = {
@@ -69,6 +102,10 @@ def get_guidance_message_key(intent: str) -> str:
         INTENT_FULIZA: "GUIDE_FULIZA",
         INTENT_REPORT: "GUIDE_REPORT",
         INTENT_UPGRADE: "GUIDE_UPGRADE",
-        INTENT_OUT_OF_SCOPE: "GUIDE_OUT_OF_SCOPE"
+        INTENT_OUT_OF_SCOPE: "GUIDE_OUT_OF_SCOPE",
+        INTENT_RECOVERY_SMALLTALK: "SOFT_RECOVERY_SMALLTALK",
+        INTENT_RECOVERY_META: "SOFT_RECOVERY_META",
+        INTENT_RECOVERY_ABUSIVE: "SOFT_RECOVERY_ABUSIVE",
+        INTENT_RECOVERY_DEFAULT: "SOFT_RECOVERY_DEFAULT_GUIDED"
     }
     return mapping.get(intent, "UNKNOWN_MESSAGE")
