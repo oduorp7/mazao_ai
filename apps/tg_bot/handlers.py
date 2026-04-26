@@ -36,6 +36,7 @@ from telegram.constants import ParseMode
 
 import apps.tg_bot.db as db
 import apps.tg_bot.messages as M
+from apps.tg_bot import router
 from apps.tg_bot.menu import update_user_menu
 from apps.tg_bot.trial import is_feature_allowed, start_trial, get_trial_status
 from apps.payments.stk import initiate_stk_push
@@ -2849,15 +2850,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await _reply(update, M.NOT_REGISTERED)
         return
 
-    text_lower = text.lower()
-    if any(k in text_lower for k in ["report", "summary", "mapato"]):
-        await cmd_report(update, context)
-    elif any(k in text_lower for k in ["vat", "tax", "kodi"]):
-        await cmd_vat(update, context)
-    elif any(k in text_lower for k in ["help", "commands"]):
-        await cmd_help(update, context)
-    else:
-        await _reply(update, M.UNKNOWN_MESSAGE)
+    # P18: Conversational Intent Router (Deterministic Only)
+    intent = router.classify_intent(text)
+    if intent:
+        log.info("intent_detected", telegram_id=tid, intent=intent)
+        if intent == router.INTENT_GREETING:
+            return await cmd_start(update, context)
+        if intent == router.INTENT_HELP:
+            return await cmd_help(update, context)
+        
+        # Guide intents
+        msg_key = router.get_guidance_message_key(intent)
+        return await _reply(update, getattr(M, msg_key))
+
+    # Final Fallback
+    await _reply(update, M.UNKNOWN_MESSAGE)
 
 
 # ── Bot commands menu (shown in Telegram's / menu) ────────────────────────────

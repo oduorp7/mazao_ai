@@ -908,3 +908,34 @@ You're missing out on daily M-Pesa reports and KRA reminders.
 Come back and upgrade to Mazao Core for just KES 149/month to get your business back on track.
 Reply /upgrade to resume.
 """
+# ── Phase 18: Conversational Router Guidance ──────────────────────────────────
+
+GUIDE_TOKENS = """⚡ *Electricity Tracking*
+I can help you track your KPLC tokens and predict when you'll run out of power.
+
+Type /tokens to log a new token or see your current status."""
+
+GUIDE_GAS = """🔥 *Gas Tracking*
+I can track your gas consumption and alert you before you run out.
+
+Type /gas to log a refill or see your dashboard."""
+
+GUIDE_FULIZA = """💳 *Fuliza Tracking*
+I track your Fuliza balance and daily costs to help you manage your cashflow.
+
+Type /fuliza to log a new entry or see your history."""
+
+GUIDE_REPORT = """📊 *Business Reports*
+I can generate a profit and loss summary for your business based on your M-Pesa statement.
+
+Type /report to see your latest summary or /statement to upload a new file."""
+
+GUIDE_UPGRADE = """🚀 *Upgrade to Mazao AI Pro*
+Get AI-powered insights, unlimited tracking, and proactive alerts.
+
+Type /upgrade to see our plans and pricing."""
+
+GUIDE_OUT_OF_SCOPE = """ℹ️ *Mazao AI Scope*
+I specialize in tracking your business finances (M-Pesa, Gas, Tokens).
+
+I can't help with other topics right now, but I can show you your business dashboard. Try /status."""
