@@ -939,3 +939,15 @@ GUIDE_OUT_OF_SCOPE = """ℹ️ *Mazao AI Scope*
 I specialize in tracking your business finances (M-Pesa, Gas, Tokens).
 
 I can't help with other topics right now, but I can show you your business dashboard. Try /status."""
+
+# P18-T8G: Onboarding Entry point Optimization
+WELCOME_BACK_MENU = """👋 *Welcome back, {name}!*
+
+What would you like to do today?
+
+📊 /report – Today’s business summary
+⚡ /tokens – Electricity usage
+🔥 /gas – Gas tracking
+💸 /fuliza – Fuliza insights
+📄 /statement – Upload M-Pesa statement
+⚙️ /settings – Update profile"""

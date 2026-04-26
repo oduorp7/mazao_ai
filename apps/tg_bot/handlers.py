@@ -297,45 +297,71 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             referred_by_id = referrer_resp.data[0]["id"]
             log.info("referrer_found", referrer_id=referred_by_id)
 
-    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    tenant = await _safe_db_call(lambda: db.get_tenant(tid))
 
-    if tenant and tenant["status"] in ("active", "trial"):
-        # P13: Refresh menu for existing users
-        await update_user_menu(context.bot, tid, tenant)
-        # Already registered — show help instead
-        await _reply(update, M.HELP)
-        return
+    # P18-T8G: Idempotent Routing & Onboarding Escape
+    if tenant:
+        has_name = bool(tenant.get("business_name") or tenant.get("full_name"))
+        has_lang = bool(tenant.get("preferred_language"))
+        
+        if has_name and has_lang:
+            # ACTIVE_USER: Skip onboarding entirely
+            await update_user_menu(context.bot, tid, tenant)
+            name = tenant.get("business_name") or tenant.get("full_name") or "there"
+            await _reply(update, M.WELCOME_BACK_MENU.format(name=name))
+            log.info("start_bypass_onboarding", telegram_id=tid)
+            return
 
-    conv = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_conv_state(tid))
-    state = conv["state"] if conv else "idle"
-
-    if state == "idle":
-        # First time start: present user type selection
-        keyboard = [
-            [
-                InlineKeyboardButton("🏢 Business Owner", callback_data="type_business"),
-                InlineKeyboardButton("👤 Individual", callback_data="type_individual"),
+        # PARTIAL_ONBOARDING: Resume from missing step
+        u_type = tenant.get("user_type")
+        if not u_type:
+            keyboard = [
+                [
+                    InlineKeyboardButton("🏢 Business Owner", callback_data="type_business"),
+                    InlineKeyboardButton("👤 Individual", callback_data="type_individual"),
+                ]
             ]
-        ]
-        await _reply(update, M.USER_TYPE_SELECT, reply_markup=InlineKeyboardMarkup(keyboard))
-        # Create tenant row if not exists
-        if not await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid)):
-            await asyncio.get_event_loop().run_in_executor(
-                None, 
-                lambda: db.create_tenant(
-                    telegram_id=tid,
-                    telegram_username=_username(update),
-                    full_name=_full_name(update),
-                    referred_by=referred_by_id # P10-T4
-                )
-            )
-        elif referred_by_id:
-            # Update existing but un-onboarded tenant
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: db.update_tenant(tid, {"referred_by": referred_by_id})
-            )
+            await _reply(update, M.USER_TYPE_SELECT, reply_markup=InlineKeyboardMarkup(keyboard))
+        elif not has_name:
+            if u_type == "business":
+                await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_name"))
+                await _reply(update, M.WELCOME)
+            else:
+                await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_individual_name"))
+                await _reply(update, M.INDIVIDUAL_ASK_NAME)
+        elif not has_lang:
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_language"))
+            keyboard = [
+                [
+                    InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
+                    InlineKeyboardButton("🇰🇪 Swahili", callback_data="lang_sw"),
+                ]
+            ]
+            await _reply(update, M.ASK_LANGUAGE, reply_markup=InlineKeyboardMarkup(keyboard))
+        
+        log.info("start_resume_onboarding", telegram_id=tid, u_type=u_type)
         return
+
+    # NEW_USER: Fresh Start
+    keyboard = [
+        [
+            InlineKeyboardButton("🏢 Business Owner", callback_data="type_business"),
+            InlineKeyboardButton("👤 Individual", callback_data="type_individual"),
+        ]
+    ]
+    await _reply(update, M.USER_TYPE_SELECT, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    # Create tenant record
+    await asyncio.get_event_loop().run_in_executor(
+        None, 
+        lambda: db.create_tenant(
+            telegram_id=tid,
+            telegram_username=_username(update),
+            full_name=_full_name(update),
+            referred_by=referred_by_id
+        )
+    )
+    log.info("start_new_user", telegram_id=tid)
 
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
