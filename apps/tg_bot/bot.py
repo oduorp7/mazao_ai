@@ -116,7 +116,13 @@ async def post_init(application: Application) -> None:
         if app_url:
             from apps.payments import get_provider
             provider = get_provider()
-            webhook_url = f"{app_url.rstrip('/')}/payments/webhook"
+            # P19-T9A: Fix route alignment mismatch
+            provider_type = os.getenv("PAYMENT_PROVIDER", "intasend").lower()
+            if provider_type == "daraja":
+                webhook_url = f"{app_url.rstrip('/')}/mpesa/c2b"
+            else:
+                webhook_url = f"{app_url.rstrip('/')}/payments/webhook"
+                
             success = await provider.register_callback_url(webhook_url)
             if success:
                 log.info("payment_callback_registered", url=webhook_url)
@@ -315,11 +321,22 @@ async def main() -> None:
             # Even on error, we return 0 to Safaricom to prevent retries if we logged the failure
             return web.json_response({"ResultCode": 0, "ResultDesc": "Accepted"})
 
+    async def daraja_stk_callback(request):
+        """P19-T9A: Daraja STK Push Callback Endpoint."""
+        try:
+            payload = await request.json()
+            log.info("daraja_stk_callback_received", payload=payload)
+            return web.json_response({"ResultCode": 0, "ResultDesc": "Success"})
+        except Exception as e:
+            log.error("daraja_stk_callback_error", error=str(e))
+            return web.json_response({"ResultCode": 0, "ResultDesc": "Success"})
+
     health_app = web.Application()
     health_app.router.add_get("/health", health_check)
     health_app.router.add_post("/payments/webhook", payment_webhook)
     health_app.router.add_post("/mpesa/c2b/validation", daraja_validation)
     health_app.router.add_post("/mpesa/c2b/confirmation", daraja_confirmation)
+    health_app.router.add_post("/mpesa/stk/callback", daraja_stk_callback)
     
     runner = web.AppRunner(health_app)
     await runner.setup()

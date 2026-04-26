@@ -139,10 +139,69 @@ class DarajaProvider(PaymentProvider):
 
     async def initiate_stk_push(self, phone_number: str, amount: int, account_ref: str, narrative: str = "Mazao AI Subscription") -> dict:
         """
-        P17-T7C: Daraja STK Push Stub.
-        Fails closed until DARAJA_PASSKEY and full implementation are ready.
+        P17-T7C: Native Daraja STK Push (Lipa Na M-Pesa Online).
         """
-        log.error("daraja_stk_push_blocked", reason="Missing DARAJA_PASSKEY or implementation stub")
-        return {
-            "error": "Daraja STK Push is not yet active in production. Please use IntaSend or check DARAJA_PASSKEY configuration."
-        }
+        if not self.passkey or not self.shortcode:
+            log.error("daraja_stk_push_blocked", reason="Missing DARAJA_PASSKEY or DARAJA_SHORTCODE")
+            return {"error": "Daraja STK Push credentials not configured."}
+
+        try:
+            token = await self.get_access_token()
+            timestamp = time.strftime("%Y%m%d%H%M%S")
+            password_str = f"{self.shortcode}{self.passkey}{timestamp}"
+            password = base64.b64encode(password_str.encode()).decode()
+
+            url = f"{self.base_url}/mpesa/stkpush/v1/processrequest"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+            
+            # P19-T9A: App URL for STK callback
+            app_url = os.getenv("FLY_APP_URL", "").rstrip("/")
+            callback_url = f"{app_url}/mpesa/stk/callback" # Dedicated STK callback route
+
+            formatted_phone = self._format_phone(phone_number)
+            
+            payload = {
+                "BusinessShortCode": self.shortcode,
+                "Password": password,
+                "Timestamp": timestamp,
+                "TransactionType": "CustomerPayBillOnline",
+                "Amount": amount,
+                "PartyA": formatted_phone,
+                "PartyB": self.shortcode,
+                "PhoneNumber": formatted_phone,
+                "CallBackURL": callback_url,
+                "AccountReference": account_ref[:12], # Max 12 chars
+                "TransactionDesc": narrative[:20]     # Max 20 chars
+            }
+
+            log.info("daraja_stk_push_initiating", phone=formatted_phone, amount=amount, callback=callback_url)
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                
+                if resp.status_code != 200:
+                    log.error("daraja_stk_push_failed", status=resp.status_code, body=resp.text)
+                    return {"error": f"Daraja STK request failed: {resp.status_code}"}
+                    
+                data = resp.json()
+                log.info("daraja_stk_push_success", checkout_id=data.get("CheckoutRequestID"))
+                return data
+
+        except Exception as e:
+            log.error("daraja_stk_push_error", error=str(e))
+            return {"error": str(e)}
+
+    def _format_phone(self, phone: str) -> str:
+        """Normalize phone to 2547XXXXXXXX format."""
+        import re
+        phone = re.sub(r"[^0-9]", "", phone)
+        if phone.startswith("0"):
+            phone = "254" + phone[1:]
+        elif phone.startswith("7"):
+            phone = "254" + phone
+        elif phone.startswith("+"):
+            phone = phone.lstrip("+")
+        return phone
