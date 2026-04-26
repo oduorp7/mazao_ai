@@ -983,15 +983,21 @@ Try:
 Or type /help for all commands."""
 
 # P19-T9G1: About Command
-ABOUT_MESSAGE = """🤖 I’m Mazao AI — built by Codegx Technologies to help you track and understand your finances.
+ABOUT_MESSAGE = """🤖 I’m Mazao AI — built by Codegx Technologies to help you take control of your finances.
 
-I focus on:
-• M-Pesa statements
-• Electricity (tokens)
-• Gas usage
-• Oracle-grade insights
+I help you:
+• Understand your M-Pesa spending automatically
+• Track electricity tokens & gas usage
+• Monitor Fuliza and hidden costs
+• Stay ahead of bills and financial risks
 
-Use /help to explore what I can do."""
+🇰🇪 Built for real Kenyan finances — M-Pesa first.
+
+No spreadsheets. No manual tracking.
+
+⚡ Get started in under 1 minute.
+
+👉 Type /start to set up your account."""
 
 # P19-T9C: Payment UX Finalization
 PAYMENT_STK_GUIDE = """💳 You will receive an M-Pesa prompt on your phone.
