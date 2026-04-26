@@ -2828,15 +2828,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
         plan_name = "Core" if amount < 300 else "Pro"
         
+        # P19-T9C: Pre-STK Guidance
+        await _reply(update, M.PAYMENT_STK_GUIDE)
+        
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.update_tenant(tid, {"phone_number": clean_phone}))
         account_ref = f"MAZAO-{str(tenant['id'])[:8]}"
         res = await initiate_stk_push(phone_number=clean_phone, amount=amount, account_ref=account_ref, narrative=f"Mazao AI {plan_name}")
         
         if "error" in res:
-            await _reply(update, M.PAYMENT_FAILED.format(upgrade_link="/upgrade"))
+            # P19-T9C: Standard failure message
+            await _reply(update, M.PAYMENT_FAILED)
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
             return
             
+        # P19-T9C: Notify user about pending state
+        await _reply(update, M.PAYMENT_PENDING)
+        
         invoice_id = res.get("id") or res.get("invoice_id")
         await asyncio.get_event_loop().run_in_executor(
             None,

@@ -422,10 +422,7 @@ async def process_live_transaction(bot: Bot, parsed, raw_mapping: dict = None):
                     tenant_data = t_resp.data
                     await bot.send_message(
                         chat_id=tenant_data["telegram_id"],
-                        text=M.PAYMENT_CONFIRMED.format(
-                            plan_name=new_plan.title().replace("_", " "),
-                            amount=parsed.amount
-                        ),
+                        text=M.PAYMENT_SUCCESS_ENHANCED,
                         parse_mode=ParseMode.MARKDOWN
                     )
                     

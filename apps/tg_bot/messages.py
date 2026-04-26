@@ -837,13 +837,9 @@ Amount received: KES {amount}
 All features are now unlocked. Type /help to see what you can do.
 """
 
-PAYMENT_FAILED = """
-❌ *Payment Failed*
+PAYMENT_FAILED = """❌ Payment was not completed.
 
-Something went wrong with the payment request. Please try again or check your M-Pesa balance.
-
-Support: {upgrade_link}
-"""
+You can try again using /upgrade."""
 
 UPGRADE_REQUIRED = """
 🔒 *Feature Locked*
@@ -985,3 +981,23 @@ Try:
 /fuliza — insights
 
 Or type /help for all commands."""
+
+# P19-T9C: Payment UX Finalization
+PAYMENT_STK_GUIDE = """💳 You will receive an M-Pesa prompt on your phone.
+
+If you don’t see it:
+• Wait a few seconds
+• Ensure your phone is on and has network
+• Retry using /upgrade
+
+🔒 Secure payment via Safaricom M-Pesa"""
+
+PAYMENT_PENDING = """⏳ Waiting for payment confirmation...
+
+Please complete the M-Pesa prompt on your phone."""
+
+PAYMENT_SUCCESS_ENHANCED = """✅ Payment received successfully!
+
+🎉 Your plan is now active.
+
+Use /report to view your insights."""
