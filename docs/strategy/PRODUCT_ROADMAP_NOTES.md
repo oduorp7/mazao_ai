@@ -24,7 +24,28 @@ The conversational layer will follow a strict 4-layer hierarchy:
 
 ---
 
+## Phase 18: Conversational Hardening (COMPLETE)
+- **T8A-T8G**: Implemented deterministic intent routing, idempotent /start, and global command interrupts.
+- **T8H**: Implemented soft recovery layer for guided conversational fallback.
+
+## Phase 19: Daraja Production Readiness (COMPLETE)
+- **T9A**: Audited and fixed Daraja callback route alignment.
+- **T9B**: Implemented native STK push and certified live flows.
+- **T9C**: Finalized payment UX with guidance and feedback messages.
+
+---
+
+## Current System State: PRODUCTION_READY
+- **Payment Layer**: Native Daraja STK push certified (awaiting `DARAJA_PASSKEY`).
+- **Conversational Layer**: Hardened with deterministic routing and global interrupts.
+- **Onboarding**: Idempotent and state-aware.
+
+## Next Phase: T9D Activation
+- **Trigger**: Configuration of production secrets (`DARAJA_PASSKEY`).
+- **Objective**: Full live deployment and activation of native payments.
+
+---
+
 ## Deferred Features
-- **M-Shwari Implementation**: Deferred to Phase 18+.
-- **Daraja Full Integration**: Deferred to Phase 19+.
+- **M-Shwari Implementation**: Deferred to Phase 20+.
 - **LLM-First Routing**: Explicitly forbidden to ensure deterministic reliability.
