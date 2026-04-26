@@ -100,6 +100,23 @@ async def _safe_db_call(fn, *, default=None):
         return default
 
 
+# ── T6F-EMPTY-STATE: Statement empty-state renderer ─────────────────────────
+async def _render_statement_empty_state(update: Update) -> None:
+    """Render the FAANG-grade empty-state for /statement and /report.
+
+    Shows a guided message with two CTA buttons:
+      📤 Upload Statement  → triggers awaiting_statement_upload session
+      ❓ How to Export     → shows step-by-step guide inline
+
+    Never leaks internal state. No dead ends.
+    """
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 Upload Statement", callback_data="statement_upload")],
+        [InlineKeyboardButton("❓ How to Export", callback_data="statement_guide")],
+    ])
+    await _reply(update, M.STATEMENT_REQUIRED, reply_markup=keyboard)
+
+
 # ── KPLC SMS helpers (P16-FIX-FINAL) ─────────────────────────────────────────
 
 _KPLC_SMS_RE = re.compile(
@@ -365,6 +382,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if data == "tokens_add_new":
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_tokens"))
         await query.edit_message_text(M.TOKEN_ENTRY_PROMPT)
+        return
+
+    # T6F-EMPTY-STATE: Statement CTA callbacks
+    elif data == "statement_upload":
+        await asyncio.get_event_loop().run_in_executor(None, lambda: db.set_conv_state(tid, "awaiting_statement_upload"))
+        await query.edit_message_text(M.STATEMENT_UPLOAD_PROMPT)
+        log.info("statement_upload_session_started", telegram_id=tid)
+        return
+
+    elif data == "statement_guide":
+        await query.answer()  # acknowledge before sending new message
+        await query.edit_message_text(M.STATEMENT_GUIDE_TEXT)
+        log.info("statement_guide_shown", telegram_id=tid)
         return
 
     elif data == "tokens_change_htype":
@@ -895,7 +925,7 @@ async def cmd_statement(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         
         if not statement:
-            await _reply(update, M.STATEMENT_REQUIRED)
+            await _render_statement_empty_state(update)
             return
 
         # P3-T5: Summary format with null-safety (FAANG grade robustness)
@@ -938,7 +968,7 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # P3-T2: Check if a statement has been uploaded
         statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
         if not statement:
-            await _reply(update, M.STATEMENT_REQUIRED)
+            await _render_statement_empty_state(update)
             return
 
         # P7-T6: Feature Gating
@@ -2775,6 +2805,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         await _reply(update, M.STK_PUSH_SENT.format(phone=clean_phone, amount=amount, plan_name=plan_name))
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+        return
+
+    # ── T6F-EMPTY-STATE: awaiting_statement_upload ───────────────────────
+    if state == "awaiting_statement_upload":
+        # /cancel exits the session cleanly
+        if text.lower() in ("/cancel", "/done", "/menu"):
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            await _reply(update, "✅ *Upload cancelled.* Type /statement anytime to try again.")
+            log.info("statement_upload_cancelled", telegram_id=tid)
+            return
+
+        # Document upload: validate and store
+        if update.message and update.message.document:
+            doc = update.message.document
+            fname = (doc.file_name or "").lower()
+
+            # Rule 1: Must be a CSV file
+            if not fname.endswith(".csv"):
+                await _reply(update, M.STATEMENT_UPLOAD_INVALID_FORMAT)
+                log.info("statement_upload_invalid_format", telegram_id=tid, filename=doc.file_name)
+                return
+
+            # Rule 2: Basic size sanity (< 5MB for CSV)
+            if doc.file_size and doc.file_size > 5 * 1024 * 1024:
+                await _reply(update, "⚠️ *File too large.*\n\nPlease send a CSV under 5MB.")
+                return
+
+            # Success — acknowledge receipt. No parsing yet (no AI brain phase).
+            await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
+            await _reply(update, M.STATEMENT_UPLOAD_SUCCESS.format(filename=doc.file_name or "statement.csv"))
+            log.info("statement_upload_received", telegram_id=tid, filename=doc.file_name, size=doc.file_size)
+            return
+
+        # Text input while in upload mode: reject with guidance
+        await _reply(update, M.STATEMENT_REJECT_TEXT)
+        log.info("statement_upload_text_rejected", telegram_id=tid)
         return
 
     # ── Idle state fallback ───────────────────────────────────────────────

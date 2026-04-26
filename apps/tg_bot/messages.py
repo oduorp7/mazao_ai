@@ -397,14 +397,68 @@ STATEMENT_PARSE_FAILED = "❌ *Parsing Failed*\n\nI couldn't find any valid tran
 STATEMENT_PARSE_SUCCESS = "✅ *Parsing Successful!*\n\nLoaded *{count}* transactions. Generating your business report now..."
 
 STATEMENT_REQUIRED = """\
-📂 *No transactions found.*
+📂 *No M-Pesa Statement Found*
 
-Send me your M-Pesa statement to get started.
+You haven't uploaded a statement yet — that's okay, let's fix that!
 
-*How to get it:*
-MySafaricom app → M-Pesa → Statement → Export CSV
+Your M-Pesa statement unlocks:
+✅ Business profit report
+✅ VAT liability estimate
+✅ Cash flow summary
 
-Then send the file here."""
+Use the buttons below to get started:"""
+
+# ── Statement Ingestion Flow (T6F-EMPTY-STATE) ────────────────────────────────
+
+STATEMENT_UPLOAD_PROMPT = """\
+📤 *Send your M-Pesa Statement (CSV)*
+
+Please send the CSV file exported from your MySafaricom app.
+
+_Supported format: .csv (standard M-Pesa export)_
+_PDF and SMS formats are not yet supported._
+
+Send the file now, or type /cancel to exit."""
+
+STATEMENT_GUIDE_TEXT = """\
+📖 *How to Export Your M-Pesa Statement*
+
+*Step 1:* Open the *MySafaricom App* on your phone.
+*Step 2:* Tap *M-Pesa* → *Statement*.
+*Step 3:* Select the date range (last 30 days recommended).
+*Step 4:* Tap *Export* → choose *CSV*.
+*Step 5:* Send the downloaded file here in this chat.
+
+_The file will be named something like `M-Pesa_Statement.csv`._
+
+Once you have the file ready, tap /statement and use the *📤 Upload Statement* button."""
+
+STATEMENT_REJECT_TEXT = """\
+❌ *Please Send a CSV File*
+
+I'm waiting for your M-Pesa statement file — not a text message.
+
+*How to send it:*
+Attach the .csv file using the 📎 (attachment) icon in Telegram.
+
+Type /cancel to exit upload mode."""
+
+STATEMENT_UPLOAD_SUCCESS = """\
+✅ *Statement Received!*
+
+Your file `{filename}` has been received and is being processed.
+
+Type /report to generate your business report once processing is complete."""
+
+STATEMENT_UPLOAD_INVALID_FORMAT = """\
+⚠️ *Invalid File Format*
+
+Only *.csv* files (M-Pesa export) are accepted.
+
+Please export from MySafaricom → M-Pesa → Statement → Export CSV,
+then send the file here.
+
+Type /cancel to exit upload mode."""
 
 # ── Phase 4: Utility Prediction ──────────────────────────────────────────────
 

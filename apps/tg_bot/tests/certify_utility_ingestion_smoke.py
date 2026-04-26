@@ -801,5 +801,121 @@ class TestSuperadminBypass(unittest.IsolatedAsyncioTestCase):
             trial_mod.SUPERADMIN_TELEGRAM_IDS = original
 
 
+class TestStatementEmptyStateFlow(unittest.IsolatedAsyncioTestCase):
+    """T6F-EMPTY-STATE: Verify guided ingestion flow for /statement and /report."""
+
+    def setUp(self):
+        self.tid = 123456789
+        self.tenant = {
+            "id": "8f8e8d8c-8b8a-8988-8786-858483828180",
+            "telegram_id": self.tid,
+            "plan": "trial",
+        }
+        self.update = AsyncMock()
+        self.update.effective_user.id = self.tid
+        self.update.effective_chat.id = self.tid
+        self.update.effective_message = AsyncMock()
+        self.update.message = self.update.effective_message
+        self.update.effective_message.text = ""
+        self.update.effective_message.document = None
+        self.context = MagicMock()
+        self.context.user_data = {}
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_statement_empty_state_shows_buttons(self, mock_reply, mock_db):
+        """Verify /statement with no data shows CTA buttons, not a dead-end text."""
+        mock_db.get_tenant.return_value = self.tenant
+        mock_db.get_latest_statement.return_value = None  # No statement uploaded
+
+        import apps.tg_bot.handlers as handlers
+        await handlers.cmd_statement(self.update, self.context)
+
+        mock_reply.assert_called_once()
+        call_args = mock_reply.call_args
+        # Verify message text is the new empty-state message
+        assert "No M-Pesa Statement Found" in call_args[0][1], \
+            "Empty state message not shown"
+        # Verify inline keyboard CTA buttons were passed
+        reply_markup = call_args[1].get("reply_markup")
+        assert reply_markup is not None, "No reply_markup (CTA buttons) passed"
+        # Verify button callback_data
+        button_callbacks = [
+            btn.callback_data
+            for row in reply_markup.inline_keyboard
+            for btn in row
+        ]
+        assert "statement_upload" in button_callbacks, "Upload button missing"
+        assert "statement_guide" in button_callbacks, "Guide button missing"
+
+    @patch('apps.tg_bot.handlers.db')
+    async def test_statement_upload_session_trigger(self, mock_db):
+        """Verify statement_upload callback sets awaiting_statement_upload state."""
+        query = AsyncMock()
+        query.from_user.id = self.tid
+        query.data = "statement_upload"
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        self.update.callback_query = query
+
+        import apps.tg_bot.handlers as handlers
+        await handlers.handle_callback(self.update, self.context)
+
+        # Verify session state was set
+        mock_db.set_conv_state.assert_called_once_with(self.tid, "awaiting_statement_upload")
+        # Verify prompt was shown via edit_message_text
+        query.edit_message_text.assert_called_once()
+        prompt_text = query.edit_message_text.call_args[0][0]
+        assert "Send your M-Pesa Statement" in prompt_text, "Upload prompt not shown"
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_statement_rejects_text_in_upload_mode(self, mock_reply, mock_db):
+        """Verify text input while in awaiting_statement_upload is rejected with guidance."""
+        mock_db.get_conv_state.return_value = {"state": "awaiting_statement_upload"}
+        mock_db.get_tenant.return_value = self.tenant
+
+        # Simulate user sending text instead of a file
+        self.update.effective_message.text = "Here is my statement"
+        self.update.message.text = "Here is my statement"
+        self.update.message.document = None
+
+        import apps.tg_bot.handlers as handlers
+        await handlers.handle_message(self.update, self.context)
+
+        mock_reply.assert_called_once()
+        reply_text = mock_reply.call_args[0][1]
+        assert "Please Send a CSV File" in reply_text, "Rejection message not shown"
+        # Verify state NOT cleared — user should still be in upload mode
+        mock_db.clear_conv_state.assert_not_called()
+
+    @patch('apps.tg_bot.handlers.db')
+    @patch('apps.tg_bot.handlers._reply', new_callable=AsyncMock)
+    async def test_statement_accepts_csv_file(self, mock_reply, mock_db):
+        """Verify a valid .csv file is accepted, state is cleared, and success shown."""
+        mock_db.get_conv_state.return_value = {"state": "awaiting_statement_upload"}
+        mock_db.get_tenant.return_value = self.tenant
+
+        # Simulate document upload (CSV)
+        mock_doc = MagicMock()
+        mock_doc.file_name = "M-Pesa_Statement.csv"
+        mock_doc.file_size = 50 * 1024  # 50KB — well within limit
+
+        self.update.effective_message.text = ""
+        self.update.message.text = ""
+        self.update.message.document = mock_doc
+
+        import apps.tg_bot.handlers as handlers
+        await handlers.handle_message(self.update, self.context)
+
+        mock_reply.assert_called_once()
+        reply_text = mock_reply.call_args[0][1]
+        assert "Statement Received" in reply_text, "Success message not shown"
+        assert "M-Pesa_Statement.csv" in reply_text, "Filename not in success message"
+        # Verify state was cleared after successful upload
+        mock_db.clear_conv_state.assert_called_once_with(self.tid)
+
+
 if __name__ == '__main__':
     unittest.main()
