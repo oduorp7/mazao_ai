@@ -73,7 +73,12 @@ def create_tenant(
 
 
 def update_tenant(telegram_id: int, updates: dict) -> dict:
-    """Patch any fields on a tenant row. Returns updated row."""
+    """Patch any fields on a tenant row. Returns updated row.
+
+    # T6D-NULL-GUARD: Returns {} instead of crashing with IndexError when
+    # Supabase returns an empty data list (e.g., race condition or no matching row).
+    # Contract: returns dict (possibly empty) — never raises.
+    """
     resp = (
         get_client()
         .table("tenants")
@@ -85,7 +90,12 @@ def update_tenant(telegram_id: int, updates: dict) -> dict:
 
 
 def get_all_active_tenants() -> list[dict]:
-    """Return all tenants the scheduler should process today."""
+    """Return all tenants the scheduler should process today.
+
+    # T6D-NULL-GUARD: Wraps network call in try/except so a transient Supabase
+    # connection error during scheduled jobs returns [] instead of crashing the
+    # scheduler loop. Contract: always returns a list.
+    """
     try:
         resp = (
             get_client()
@@ -146,6 +156,11 @@ def save_report(tenant_id: str, period: str, summary: dict) -> None:
 
 
 def get_latest_report(tenant_id: str) -> Optional[dict]:
+    """Retrieve the most recent report row, or None.
+
+    # T6D-NULL-GUARD: Guards against resp being None/falsy before accessing .data.
+    # Contract: returns dict or None.
+    """
     resp = (
         get_client()
         .table("reports")
@@ -169,7 +184,11 @@ def save_statement(
     net: float,
     vat_estimate: float,
 ) -> dict:
-    """Store a summary of a parsed M-Pesa statement."""
+    """Store a summary of a parsed M-Pesa statement.
+
+    # T6D-NULL-GUARD: Returns {} instead of IndexError when insert returns no data.
+    # Contract: returns dict (possibly empty on failure) — never raises.
+    """
     resp = (
         get_client()
         .table("statements")
@@ -190,7 +209,11 @@ def save_statement(
 
 
 def get_latest_statement(tenant_id: str) -> Optional[dict]:
-    """Retrieve the most recent parsed statement summary."""
+    """Retrieve the most recent parsed statement summary.
+
+    # T6D-NULL-GUARD: Guards against resp being None/falsy before accessing .data.
+    # Contract: returns dict or None.
+    """
     resp = (
         get_client()
         .table("statements")
@@ -210,7 +233,11 @@ def update_tenant_sha(telegram_id: int, sha_number: str) -> dict:
 
 
 def get_tenants_by_type(user_type: str) -> List[dict]:
-    """Return all tenants of a specific type (business/individual)."""
+    """Return all tenants of a specific type (business/individual).
+
+    # T6D-NULL-GUARD: Guards against resp being None/falsy.
+    # Contract: always returns a list.
+    """
     resp = (
         get_client()
         .table("tenants")

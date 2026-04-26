@@ -82,6 +82,24 @@ NORM_PLAN_MAP = {
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# ── T6F: Centralized DB fail-safe wrapper ────────────────────────────────────
+async def _safe_db_call(fn, *, default=None):
+    """Run a synchronous DB function in the executor with a safe fallback.
+
+    Usage:
+        tenant = await _safe_db_call(lambda: db.get_tenant(tid))
+
+    - Runs fn() off the event loop (non-blocking).
+    - On ANY exception, logs a warning and returns `default` (None by default).
+    - Keeps handlers crash-proof regardless of Supabase state.
+    """
+    try:
+        return await asyncio.get_event_loop().run_in_executor(None, fn)
+    except Exception as exc:
+        log.warning("safe_db_call_failed", error=str(exc), fn=getattr(fn, "__name__", repr(fn)))
+        return default
+
+
 # ── KPLC SMS helpers (P16-FIX-FINAL) ─────────────────────────────────────────
 
 _KPLC_SMS_RE = re.compile(
@@ -909,7 +927,9 @@ async def cmd_statement(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         tid = _tg_id(update)
-        tenant = db.get_tenant(tid)
+        # T6F-BUG-FIX: was incorrectly calling db.get_tenant synchronously, blocking
+        # the event loop. Now correctly wrapped with run_in_executor.
+        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
         if not tenant:
             await _reply(update, M.NOT_REGISTERED)
