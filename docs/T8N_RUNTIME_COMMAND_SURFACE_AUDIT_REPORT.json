@@ -1,0 +1,90 @@
+{
+  "report_type": "RUNTIME_COMMAND_SURFACE_AUDIT_REPORT",
+  "prompt_id": "P18_T8N_RUNTIME_COMMAND_SURFACE_VERIFICATION_AUDIT_V1",
+  "status": "COMPLETED",
+  "kernel_loaded": "MAZAO_EXECUTION_KERNEL_V1",
+  "runtime_audit_completed": true,
+  "audit_timestamp": "2026-04-27T13:10:00+03:00",
+  "visitor_surface_status": {
+    "verdict": "CONCERN",
+    "commands_visible": ["about","start","report","tokens","gas","fuliza","status","settings","help"],
+    "count": 9,
+    "expected_count": 2,
+    "data_leakage": false,
+    "menu_overexposure": true,
+    "handlers_guard_unauthorized": true
+  },
+  "incomplete_onboarding_surface_status": {
+    "verdict": "CONCERN",
+    "commands_visible": ["about","start","report","tokens","gas","fuliza","status","settings","help"],
+    "count": 9,
+    "expected_max": 3,
+    "onboarding_resume_logic_correct": true
+  },
+  "individual_surface_status": {
+    "verdict": "PASS",
+    "commands_free": ["about","start","mystatus","tokens","gas","fuliza","subscribe","upgrade","refer","settings","language","stop","resume","feedback","privacy","help"],
+    "count_free": 16,
+    "count_paid": 15,
+    "forbidden_leaked": [],
+    "till_hidden": true,
+    "admin_hidden": true
+  },
+  "business_surface_status": {
+    "verdict": "PASS",
+    "commands_free": ["about","start","report","status","till","vat","kra","statement","upgrade","refer","settings","language","stop","resume","feedback","privacy","help"],
+    "count_free": 17,
+    "count_paid": 16,
+    "forbidden_leaked": [],
+    "admin_hidden": true
+  },
+  "admin_surface_status": {
+    "verdict": "PASS",
+    "commands": ["about","start","report","status","till","vat","kra","statement","admin","settings","language","stop","resume","feedback","privacy","help"],
+    "count": 16,
+    "gating": ["menu.py:ADMIN_TELEGRAM_ID","handlers.py:cmd_admin:silent_return"],
+    "separation_verified": true
+  },
+  "about_order_status": "PASS_FIRST_IN_ALL_SCOPES",
+  "help_order_status": "PASS_NEVER_FIRST_ALWAYS_LAST",
+  "command_count_by_state": {
+    "visitor": 9,
+    "incomplete_onboarding": 9,
+    "individual_free": 16,
+    "individual_paid": 15,
+    "business_free": 17,
+    "business_paid": 16,
+    "admin": 16
+  },
+  "leakage_detected": {
+    "data_leakage": false,
+    "menu_surface_leakage": true,
+    "affected_states": ["visitor","incomplete_onboarding"],
+    "severity": "LOW"
+  },
+  "broken_command_detected": false,
+  "hardcoded_vat_detected": false,
+  "duplicate_descriptions_detected": false,
+  "handler_integrity": {
+    "registered": 24,
+    "implemented": 24,
+    "unimplemented": []
+  },
+  "healing_protocol_passed": true,
+  "healing_details": {
+    "source_files_changed": 0,
+    "git_clean": true,
+    "telegram_api_mutated": false,
+    "schema_changed": false,
+    "deployed": false,
+    "committed": false,
+    "pushed": false
+  },
+  "recommended_action": [
+    "Create CMD_VISITOR=[about,start] as BotCommandScopeDefault in post_init",
+    "Set BotCommandScopeChat with max 3 cmds for incomplete onboarding",
+    "Move CMD_COMMON_END secondary commands behind /help or /settings",
+    "Remove unused BOT_COMMANDS import from bot.py"
+  ],
+  "ready_for_next_prompt": true
+}

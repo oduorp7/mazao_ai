@@ -1,0 +1,23 @@
+{
+  "report_type": "COMMAND_SURFACE_DEPLOYMENT_REPORT",
+  "prompt_id": "P18_T8P_COMMAND_SURFACE_FINAL_CERTIFICATION_AND_DEPLOY_V1",
+  "status": "COMPLETED",
+  "kernel_loaded": "MAZAO_EXECUTION_KERNEL_V1",
+  "tests_run": [
+    "verify_scopes.py (PASSED)",
+    "certify_utility_ingestion_smoke.py (PASSED: 38/38)"
+  ],
+  "commit_hash": "1b8da7ceac7ff7f06ec7098c3b84799995246038",
+  "push_status": "SUCCESSFUL",
+  "deploy_status": "SUCCESSFUL",
+  "fly_machine_state": "started",
+  "health_check_status": "1/1 PASSING",
+  "live_command_surface_verification": {
+    "visitor": "about, start (verified)",
+    "incomplete": "start (verified)",
+    "active": "preserved (verified)"
+  },
+  "active_scope_regression_status": "ZERO_REGRESSION",
+  "known_issues": "None",
+  "ready_for_next_prompt": true
+}

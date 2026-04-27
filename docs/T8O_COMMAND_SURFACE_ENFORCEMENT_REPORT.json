@@ -1,0 +1,29 @@
+{
+  "report_type": "COMMAND_SURFACE_ENFORCEMENT_REPORT",
+  "prompt_id": "P18_T8O_COMMAND_SURFACE_ENFORCEMENT_FIX_V2",
+  "status": "COMPLETED",
+  "kernel_loaded": "MAZAO_EXECUTION_KERNEL_V1",
+  "previous_mandate_verified": true,
+  "repo_scan_completed": true,
+  "files_modified": 2,
+  "visitor_scope_enforced": true,
+  "onboarding_scope_enforced": true,
+  "active_scope_preserved": true,
+  "command_counts_by_state": {
+    "visitor": 2,
+    "incomplete_onboarding": 1,
+    "active_individual_free": 16,
+    "active_business_free": 17,
+    "admin": 16
+  },
+  "leakage_resolved": true,
+  "telegram_scope_applied": "BotCommandScopeDefault (Visitor) + BotCommandScopeChat (Per-User)",
+  "tests_run": ["verify_scopes.py", "certify_utility_ingestion_smoke.py"],
+  "healing_protocol_passed": true,
+  "regression_checks": "PASSED",
+  "commit_status": "PENDING_VALIDATION",
+  "push_status": "SKIPPED_PER_READ_ONLY_MODE_OR_EXPLICIT_LOCK",
+  "deploy_status": "SKIPPED",
+  "known_issues": "None",
+  "ready_for_next_prompt": true
+}
