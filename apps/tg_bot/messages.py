@@ -165,6 +165,16 @@ Days remaining: *{days_left}*
 Reply /kra to see all upcoming obligations.\
 """
 
+VAT_UNAVAILABLE = """\
+📋 VAT estimate unavailable
+
+I need real transaction data before I can estimate VAT.
+
+Upload your M-Pesa statement with /statement, then try /vat again.
+
+For official filing, confirm figures with your accountant or KRA records.\
+"""
+
 VAT_REFUND = """\
 📋 *VAT Estimate — {period}*
 

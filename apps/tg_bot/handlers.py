@@ -1606,54 +1606,12 @@ async def cmd_vat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, M.NOT_REGISTERED)
         return
 
-    # Try to get latest cached report
-    report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
-
-    if not report:
-        await _reply(
-            update,
-            "📊 No report data yet.\n\nRun /report first to generate your numbers."
-        )
-        return
-
-    summary = report.get("summary", {})
-    income = summary.get("income", 0)
-    expenses = summary.get("expenses", 0)
-
-    output_vat = round(income * 0.16, 0)
-    input_vat = round(expenses * 0.16, 0)
-    net_vat = max(output_vat - input_vat, 0)
-    refund = max(input_vat - output_vat, 0)
-
-    # VAT Hygiene (P15-H2)
-    today = datetime.now(timezone.utc)
-    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
-    due_date = next_month.replace(day=20)
-    days_left = (due_date.date() - today.date()).days
-
-    if refund > 0:
-        await _reply(
-            update,
-            M.VAT_REFUND.format(
-                period=today.strftime("%B %Y"),
-                refund=_fmt_kes(refund),
-                due_date=due_date.strftime("%d %b %Y"),
-            ),
-        )
-    else:
-        await _reply(
-            update,
-            M.VAT_SUMMARY.format(
-                period=today.strftime("%B %Y"),
-                taxable_sales=_fmt_kes(income),
-                supplier_spend=_fmt_kes(expenses),
-                output_vat=_fmt_kes(output_vat),
-                input_vat=_fmt_kes(input_vat),
-                net_vat=_fmt_kes(net_vat),
-                due_date=due_date.strftime("%d %b %Y"),
-                days_left=days_left,
-            ),
-        )
+    # Phase 18 T8K: Trust Fix - Remove fabricated VAT outputs
+    statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
+    
+    # We currently do not have granular invoice/receipt OCR to determine real taxable inputs/outputs.
+    # Therefore, any calculation is fabricated. Return safe unavailable state.
+    await _reply(update, M.VAT_UNAVAILABLE)
 
 
 # ── /kra ──────────────────────────────────────────────────────────────────────
