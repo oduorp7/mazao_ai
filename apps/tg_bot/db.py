@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from apps.agent import obligations as agent_obs
 
 from supabase import create_client, Client
 
@@ -295,8 +296,8 @@ def get_individual_obligations(telegram_id: int) -> List[dict]:
         })
 
     if status == "self_employed":
-        # NSSF: 15th of next month
-        nssf_due = next_month.replace(day=15)
+        # NSSF: Derives from canonical obligations
+        nssf_due = next_month.replace(day=agent_obs.NSSF_DUE_DAY)
         obligations.append({
             "name": "NSSF Tier 1 + 2",
             "due_date": nssf_due,

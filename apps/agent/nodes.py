@@ -55,6 +55,7 @@ from apps.agent.state import (
     NodeResult,
     NodeStatus,
 )
+from apps.agent import obligations as agent_obs
 from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -101,7 +102,7 @@ KRA_CALENDAR: dict[ObligationType, dict] = {
         "penalty_pct": 0.05,
     },
     ObligationType.NSSF: {
-        "due_day": 15,
+        "due_day": agent_obs.NSSF_DUE_DAY,
         "frequency": "monthly",
         "penalty_pct": 0.05,
     },

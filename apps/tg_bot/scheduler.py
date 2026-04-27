@@ -26,6 +26,7 @@ from telegram.ext import ContextTypes # P10-T5
 import apps.tg_bot.db as db
 import apps.tg_bot.messages as M
 from apps.agent import estimator
+from apps.agent import obligations as agent_obs
 from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -181,7 +182,7 @@ async def _process_tenant(bot: Bot, tenant: dict) -> None:
 KRA_OBLIGATIONS = [
     {"type": "VAT",      "due_day": 20},
     {"type": "PAYE",     "due_day": 9},
-    {"type": "NSSF",     "due_day": 15},
+    {"type": "NSSF",     "due_day": agent_obs.NSSF_DUE_DAY},
     {"type": "NHIF/SHA", "due_day": 9},
 ]
 
