@@ -1,0 +1,65 @@
+{
+  "artifact_id": "MAZAO_AI_SYSTEM_AUDIT_REPORT_V1",
+  "audit_timestamp": "2026-04-27T11:48:00Z",
+  "audit_version": "2.0 (Combined Surface & Deep-Trace)",
+  "status": "ACTION_REQUIRED",
+  "executive_summary": {
+    "technical_debt": "HIGH (Monolithic coupling)",
+    "scalability_risk": "MEDIUM-HIGH (Lack of backpressure & concurrency control)",
+    "market_readiness": "MVP_STABLE",
+    "overall_grade": "B-"
+  },
+  "findings": {
+    "architectural_integrity": {
+      "finding": "Monolithic Handler Coupling",
+      "impact": "Single point of failure; syntax errors in helpers crash the entire bot surface.",
+      "severity": "CRITICAL",
+      "location": "apps/tg_bot/handlers.py",
+      "recommendation": "Decouple into domain-specific routers (Tax, Utilities, Payments)."
+    },
+    "state_consistency": {
+      "finding": "Ghost Alert Registry Risk",
+      "impact": "Alert state tied to business records causes 'phantom' historical alerts or missed critical reminders.",
+      "severity": "HIGH",
+      "location": "apps/tg_bot/scheduler.py",
+      "recommendation": "Externalize alert state to a dedicated notification_registry table."
+    },
+    "concurrency_control": {
+      "finding": "Unbounded Async Task Execution",
+      "impact": "Webhook bursts (Daraja/Intasend) can exhaust DB pools and trigger Telegram rate limits.",
+      "severity": "MEDIUM-HIGH",
+      "location": "apps/tg_bot/bot.py",
+      "recommendation": "Implement a Worker Queue with fixed consumer concurrency."
+    },
+    "data_privacy": {
+      "finding": "Implicit Context Identity",
+      "impact": "Single-tenant assumption creates data leakage risk for future multi-number users.",
+      "severity": "HIGH",
+      "location": "Global",
+      "recommendation": "Implement Phase 20 Wallet-Profile scoping across all queries."
+    },
+    "ux_transparency": {
+      "finding": "Black-Box Error Handling",
+      "impact": "Generic error messages in financial context erode user trust.",
+      "severity": "MEDIUM",
+      "location": "apps/tg_bot/bot.py",
+      "recommendation": "Implement Discriminatory Error Handling with actionable recovery paths."
+    },
+    "financial_integrity": {
+      "finding": "KRA HALLUCINATION RISK",
+      "impact": "Missing monthly statement data is not explicitly flagged in tax estimates.",
+      "severity": "HIGH",
+      "location": "apps/agent/estimator.py",
+      "recommendation": "Add a data-completeness score to all /vat and /kra reports."
+    }
+  },
+  "moat_analysis": {
+    "primary_moat": "Sovereign Tax Sidecar (KRA/Tax automation)",
+    "primary_threat": "Safaricom native business insights integration",
+    "recommendation": "Double down on regulatory-heavy automation where Safaricom risk appetite is low."
+  },
+  "roadmap_validation": {
+    "phase_19": "PASSED (Daraja Production Readiness)",
+    "phase_20": "REQUIRED (Architectural stability and multi-tenancy hardening)"
+  }
+}
