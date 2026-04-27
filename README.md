@@ -21,6 +21,7 @@ Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax complianc
 Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technical and strategic artifacts are consolidated in the `/docs` directory.
 
 ### 📚 Documentation Map
+- **[Future: Multi-Number Wallets](docs/architecture/MULTI_NUMBER_WALLET_PROFILES.md)**: Design for supporting multiple phone numbers (wallets) per tenant.
 - **[Strategy & Roadmap](docs/strategy/ROADMAP.md)**: Product vision, growth milestones, and first-customer outreach guide.
 - **[Architecture](docs/architecture/LLM_FACTORY.md)**: Technical design of the Multi-LLM factory, fallback logic, and data flow.
 - **[Governance & Protocols](docs/governance/PROTOCOL.json)**: Engineering rules, security protocols, and Phase-Gate requirements.
@@ -53,7 +54,18 @@ Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technic
 | `/resume` | Resume daily alerts | Any | Any |
 | `/admin` | Admin Dashboard | Admin | N/A |
 
-## 📡 Utility Alert Lifecycle
+## � Future Architecture: Multi-Number Wallets (Phase 20+)
+
+Mazao AI is evolving to support users with multiple Safaricom identities (e.g., Personal Number + M-PESA Till/Paybill).
+
+- **Concept**: One Tenant → Multiple Wallet Profiles (Phone Numbers).
+- **Partitioning**: All financial data (Statements, Fuliza, Utilities) will be explicitly linked to a `wallet_id`.
+- **UX**: New `/wallets` command to list, switch, and manage profiles without re-onboarding.
+- **Status**: Research and Design (Phase 20 Roadmap). See **[Architecture: Multi-Number Wallets](docs/architecture/MULTI_NUMBER_WALLET_PROFILES.md)** for the full spec.
+
+---
+
+## �📡 Utility Alert Lifecycle
 
 Mazao AI implements a unified, stateful alerting system for Electricity (Tokens) and Gas depletion to prevent notification fatigue while ensuring critical urgency.
 

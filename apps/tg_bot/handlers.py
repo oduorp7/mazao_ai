@@ -1627,25 +1627,43 @@ async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     today = datetime.now(timezone.utc)
     next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
 
-    obligations = [
-        {"type": "VAT", "due_day": 20, "icon": "📋"},
-        {"type": "PAYE", "due_day": 9, "icon": "👥"},
-        {"type": "NSSF", "due_day": 15, "icon": "🏥"},
-        {"type": "NHIF/SHA", "due_day": 9, "icon": "💊"},
+    obligations_tax = [
+        {"type": "VAT", "due_day": 20},
+        {"type": "PAYE", "due_day": 9},
+    ]
+    obligations_social = [
+        {"type": "NSSF", "due_day": 15},
+        {"type": "NHIF/SHA", "due_day": 9},
     ]
 
     text = M.KRA_OBLIGATIONS_HEADER
-    for ob in obligations:
+    
+    # 1. Tax (KRA) Group
+    text += M.KRA_OBLIGATION_GROUP.format(icon="🧾", group_name="Tax (KRA)")
+    for ob in obligations_tax:
         due_date = next_month.replace(day=ob["due_day"])
         days_left = (due_date.date() - today.date()).days
         overdue = days_left < 0
         overdue_flag = "\n   ❗ *OVERDUE*" if overdue else ""
 
         text += M.KRA_OBLIGATION_ROW.format(
-            icon=ob["icon"],
             obligation_type=ob["type"],
             due_date=due_date.strftime("%d %b %Y"),
-            amount=0,               # will come from pipeline result in production
+            days_left=abs(days_left) if not overdue else f"{abs(days_left)} days ago",
+            overdue_flag=overdue_flag,
+        )
+
+    # 2. Payroll & Social Group
+    text += M.KRA_OBLIGATION_GROUP.format(icon="👥", group_name="Payroll & Social")
+    for ob in obligations_social:
+        due_date = next_month.replace(day=ob["due_day"])
+        days_left = (due_date.date() - today.date()).days
+        overdue = days_left < 0
+        overdue_flag = "\n   ❗ *OVERDUE*" if overdue else ""
+
+        text += M.KRA_OBLIGATION_ROW.format(
+            obligation_type=ob["type"],
+            due_date=due_date.strftime("%d %b %Y"),
             days_left=abs(days_left) if not overdue else f"{abs(days_left)} days ago",
             overdue_flag=overdue_flag,
         )

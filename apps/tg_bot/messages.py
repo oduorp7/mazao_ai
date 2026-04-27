@@ -187,11 +187,13 @@ Reply /help if you need the step-by-step iTax guide.\
 
 # ── KRA obligations ───────────────────────────────────────────────────────────
 
-KRA_OBLIGATIONS_HEADER = "*⏰ Upcoming KRA Obligations*\n\n"
+KRA_OBLIGATIONS_HEADER = "📋 *Upcoming Statutory Obligations*\n\n"
+
+KRA_OBLIGATION_GROUP = "{icon} *{group_name}*\n"
 
 KRA_OBLIGATION_ROW = """\
-{icon} *{obligation_type}* — Due {due_date}
-   Est. amount: KES {amount:,.0f}
+• {obligation_type} — Due {due_date}
+   Est. amount: —
    Days left: {days_left}{overdue_flag}
 
 """
