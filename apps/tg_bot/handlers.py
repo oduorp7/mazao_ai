@@ -2941,36 +2941,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # ── Bot commands menu (shown in Telegram's / menu) ────────────────────────────
 
 BOT_COMMANDS = [
-    # (1) Core
-    BotCommand("start",         "Start Mazao AI & Onboarding"),
+    # (1) Conversion Funnel (Top Menu)
+    BotCommand("about",         "What Mazao AI does (Start here)"),
+    BotCommand("start",         "Set up or open your account"),
+    BotCommand("report",        "Today’s business summary"),
+    BotCommand("tokens",        "Electricity usage"),
+    BotCommand("gas",           "Gas tracking"),
+    BotCommand("fuliza",        "Fuliza insights"),
+    BotCommand("status",        "Account status"),
+    BotCommand("settings",      "Update profile"),
     BotCommand("help",          "Show all commands"),
     
-    # (2) Dashboard
-    BotCommand("status",        "Business Dashboard"),
+    # (2) Secondary / Deep links
     BotCommand("mystatus",      "Personal status (KRA/SHA)"),
-    BotCommand("report",        "Generate profit report"),
     BotCommand("statement",     "Show parsing summary"),
     BotCommand("vat",           "Show VAT estimate"),
     BotCommand("kra",           "Show next deadlines"),
-    
-    # (3) Utilities
-    BotCommand("tokens",        "Log electricity units"),
-    BotCommand("fuliza",        "Log Fuliza loan balance"),
     BotCommand("till",          "Register M-Pesa Till"),
-    
-    # (4) Bills
     BotCommand("subscribe",     "Add monthly bill reminder"),
     BotCommand("subscriptions", "List all active bills"),
-    
-    # (5) Account
     BotCommand("upgrade",       "🚀 Upgrade to paid plan"),
     BotCommand("language",      "Change language"),
-    BotCommand("settings",      "⚙️ Edit your profile"),
     BotCommand("privacy",       "Read Privacy Policy"),
     BotCommand("refer",         "Refer a friend & get discount"),
     BotCommand("feedback",      "Send feedback/report issue"),
-    
-    # (6) Controls
     BotCommand("stop",          "Pause daily bot alerts"),
     BotCommand("resume",        "Resume daily bot alerts"),
 ]
+

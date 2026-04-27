@@ -7,35 +7,42 @@ log = get_logger(__name__)
 # --- Command Definitions ---
 
 CMD_COMMON_START = [
-    BotCommand("start", "Start Mazao AI & Onboarding"),
-    BotCommand("language", "Change language"),
-    BotCommand("privacy", "Read Privacy Policy"),
-    BotCommand("feedback", "Send feedback"),
-    BotCommand("help", "Show available commands"),
+    BotCommand("about", "What Mazao AI does (Start here)"),
+    BotCommand("start", "Set up or open your account"),
+    BotCommand("report", "Today’s business summary"),
+    BotCommand("tokens", "Electricity usage"),
+    BotCommand("gas", "Gas tracking"),
+    BotCommand("fuliza", "Fuliza insights"),
+    BotCommand("status", "Account status"),
+    BotCommand("settings", "Update profile"),
+    BotCommand("help", "Show all commands"),
 ]
 
 CMD_COMMON_END = [
-    BotCommand("settings", "Edit your profile"),
+    BotCommand("settings", "Update profile"),
     BotCommand("language", "Change language"),
     BotCommand("stop", "Pause daily alerts"),
     BotCommand("resume", "Resume daily alerts"),
     BotCommand("feedback", "Send feedback"),
     BotCommand("privacy", "Read Privacy Policy"),
+    BotCommand("help", "Show all commands"),
 ]
 
 CMD_INDIVIDUAL_CORE = [
-    BotCommand("help", "Show available commands"),
+    BotCommand("about", "What Mazao AI does (Start here)"),
+    BotCommand("start", "Set up or open your account"),
     BotCommand("mystatus", "Your KRA & SHA status"),
-    BotCommand("tokens", "Log electricity units"),
-    BotCommand("gas", "Log Gas refill"),
-    BotCommand("fuliza", "Log Fuliza balance"),
+    BotCommand("tokens", "Electricity usage"),
+    BotCommand("gas", "Gas tracking"),
+    BotCommand("fuliza", "Fuliza insights"),
     BotCommand("subscribe", "Add bill reminder"),
 ]
 
 CMD_BUSINESS_CORE = [
-    BotCommand("help", "Show available commands"),
-    BotCommand("report", "Generate business report"),
-    BotCommand("status", "Business dashboard"),
+    BotCommand("about", "What Mazao AI does (Start here)"),
+    BotCommand("start", "Set up or open your account"),
+    BotCommand("report", "Today’s business summary"),
+    BotCommand("status", "Account status"),
     BotCommand("till", "Register M-Pesa Till"),
     BotCommand("vat", "VAT liability check"),
     BotCommand("kra", "KRA obligation check"),
