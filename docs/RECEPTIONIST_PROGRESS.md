@@ -20,6 +20,7 @@
 - [x] T8I: About Command Conversion Optimization.
 - [x] T8J: Telegram Command Ordering (Conversion-First).
 - [x] T8K: Command Surface Audit & VAT Trust Fix.
+- [x] T8M: Statutory Obligations Labeling & Trust Fix.
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)
