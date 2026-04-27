@@ -24,8 +24,12 @@
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)
+> [!IMPORTANT]
+> **GOVERNANCE LOCK**: Phase 20 audit remediation is strictly **FROZEN** until T9H live payment validation completes. See [SYSTEM_AUDIT_REMEDIATION_FREEZE.md](governance/SYSTEM_AUDIT_REMEDIATION_FREEZE.md).
+
 - [x] T10A: Architecture & Design Documentation.
-- [ ] T10B: Wallet Profile Schema & Migration Strategy.
+- [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
+- [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T10C: Wallet Context Middleware Implementation.
 - [ ] T10D: Multi-Number Command Surface (/wallets).
 - [ ] T10E: Transaction Scoping & RLS Verification.

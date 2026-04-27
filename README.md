@@ -25,6 +25,7 @@ Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technic
 - **[Strategy & Roadmap](docs/strategy/ROADMAP.md)**: Product vision, growth milestones, and first-customer outreach guide.
 - **[Architecture](docs/architecture/LLM_FACTORY.md)**: Technical design of the Multi-LLM factory, fallback logic, and data flow.
 - **[Governance & Protocols](docs/governance/PROTOCOL.json)**: Engineering rules, security protocols, and Phase-Gate requirements.
+- **[Audit Remediation Freeze](docs/governance/SYSTEM_AUDIT_REMEDIATION_FREEZE.md)**: Mandatory freeze on Phase 20 architectural remediation until T9H live payment validation is complete.
 - **[Legal & Compliance](docs/legal/PRIVACY_POLICY.md)**: Data protection (ODPC), privacy disclosures, and KRA/ODPC compliance.
 - **[Engineering Contract](docs/governance/CONTRACT.md)**: Service Level Agreements (SLA) and development standards.
 - [x] **Regression & Certification**: System-wide protection tiers, deploy gates, and Tier A flow invariants.
