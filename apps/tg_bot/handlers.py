@@ -1662,6 +1662,7 @@ async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         overdue = days_left < 0
         overdue_flag = "\n   ❗ *OVERDUE*" if overdue else ""
 
+        # P19-T9H: Robust NSSF detection and trust-safe penalty display
         if ob["type"] == "NSSF":
             text += (
                 f"🛡️ NSSF\n"
