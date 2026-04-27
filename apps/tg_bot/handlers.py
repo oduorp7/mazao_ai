@@ -22,6 +22,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from apps.agent import estimator
+from apps.agent import obligations
 
 from telegram import (
     Update,
@@ -1632,7 +1633,7 @@ async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         {"type": "PAYE", "due_day": 9},
     ]
     obligations_social = [
-        {"type": "NSSF", "due_day": 15},
+        {"type": "NSSF", "due_day": obligations.NSSF_DUE_DAY},
         {"type": "NHIF/SHA", "due_day": 9},
     ]
 
@@ -1661,12 +1662,21 @@ async def cmd_kra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         overdue = days_left < 0
         overdue_flag = "\n   ❗ *OVERDUE*" if overdue else ""
 
-        text += M.KRA_OBLIGATION_ROW.format(
-            obligation_type=ob["type"],
-            due_date=due_date.strftime("%d %b %Y"),
-            days_left=abs(days_left) if not overdue else f"{abs(days_left)} days ago",
-            overdue_flag=overdue_flag,
-        )
+        if ob["type"] == "NSSF":
+            text += (
+                f"🛡️ NSSF\n"
+                f"Due: {due_date.strftime('%d %b %Y')}\n"
+                f"{obligations.NSSF_RULE}\n"
+                f"{obligations.NSSF_PENALTY}\n"
+                f"Days left: {abs(days_left) if not overdue else f'{abs(days_left)} days ago'}{overdue_flag}\n\n"
+            )
+        else:
+            text += M.KRA_OBLIGATION_ROW.format(
+                obligation_type=ob["type"],
+                due_date=due_date.strftime("%d %b %Y"),
+                days_left=abs(days_left) if not overdue else f"{abs(days_left)} days ago",
+                overdue_flag=overdue_flag,
+            )
 
     await _reply(update, text)
 
