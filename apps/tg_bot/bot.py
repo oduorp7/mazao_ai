@@ -71,7 +71,6 @@ from apps.tg_bot.handlers import (
     handle_document,
     handle_photo,
     cmd_about, # P19-T9G1
-    BOT_COMMANDS,
 )
 from apps.tg_bot.scheduler import (
     job_daily_reports,
@@ -110,10 +109,10 @@ def _check_env() -> None:
 async def post_init(application: Application) -> None:
     """Called once after the bot starts — set global command menu and register webhooks."""
     try:
-        # P13: Register DEFAULT scope for all users (initial view)
-        from apps.tg_bot.menu import CMD_COMMON_START
-        await application.bot.set_my_commands(CMD_COMMON_START, scope=BotCommandScopeDefault())
-        log.info("default_bot_commands_registered", count=len(CMD_COMMON_START))
+        # P13: Register DEFAULT scope for all users (initial view: Visitor)
+        from apps.tg_bot.menu import CMD_VISITOR
+        await application.bot.set_my_commands(CMD_VISITOR, scope=BotCommandScopeDefault())
+        log.info("default_bot_commands_registered", count=len(CMD_VISITOR))
 
         # P6-T3: Register Payment Provider Callback
         app_url = os.getenv("FLY_APP_URL")

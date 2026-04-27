@@ -6,6 +6,15 @@ log = get_logger(__name__)
 
 # --- Command Definitions ---
 
+CMD_VISITOR = [
+    BotCommand("about", "What Mazao AI does (Start here)"),
+    BotCommand("start", "Set up or open your account"),
+]
+
+CMD_ONBOARDING = [
+    BotCommand("start", "Continue setup"),
+]
+
 CMD_COMMON_START = [
     BotCommand("about", "What Mazao AI does (Start here)"),
     BotCommand("start", "Set up or open your account"),
@@ -59,10 +68,14 @@ async def update_user_menu(bot: Bot, user_id: int, tenant: dict = None) -> bool:
         is_admin = str(user_id) == str(admin_id)
         
         # Determine scope
-        if not tenant or not tenant.get("onboarding_completed"):
-            # New or unregistered user
-            commands = CMD_COMMON_START
-            scope_name = "new_user"
+        if not tenant:
+            # Visitor
+            commands = CMD_VISITOR
+            scope_name = "visitor"
+        elif not tenant.get("onboarding_completed"):
+            # Incomplete onboarding
+            commands = CMD_ONBOARDING
+            scope_name = "incomplete_onboarding"
         else:
             user_type = tenant.get("user_type", "individual")
             is_paid = tenant.get("plan") != "free"
