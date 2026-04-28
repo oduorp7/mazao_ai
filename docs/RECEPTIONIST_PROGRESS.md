@@ -25,6 +25,12 @@
     - Record: Separated no-data empty states for /report and /statement.
     - Result: /report now explains dependency on M-Pesa statement, while /statement remains upload-oriented.
     - Scope: Copy/UI only (No Phase 20 logic change).
+- [x] T9T: CTA Copy Alignment & /status Annual Income Tax Label Clarification.
+    - Record: Updated /statement CTA to "Tap Upload Statement below", /report CTA reads "👉 Upload your M-Pesa statement using /statement".
+    - Record: Clarified /status "Annual Return" label to "Annual Income Tax Return (30 Jun)" — distinct from monthly VAT/PAYE obligations.
+    - Audit: Annual Income Tax Return (30 Jun) is a SEPARATE statutory obligation from VAT (20th monthly) and PAYE (9th monthly). No discrepancy — different obligation types.
+    - Statutory logic changed: NO.
+    - Scope: Copy/UI only. Phase 20 lock intact.
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)
