@@ -409,16 +409,28 @@ STATEMENT_PARSE_FAILED = "❌ *Parsing Failed*\n\nI couldn't find any valid tran
 STATEMENT_PARSE_SUCCESS = "✅ *Parsing Successful!*\n\nLoaded *{count}* transactions. Generating your business report now..."
 
 STATEMENT_REQUIRED = """\
-📂 *No M-Pesa Statement Found*
+📂 *M-Pesa Statement Missing*
 
-You haven't uploaded a statement yet — that's okay, let's fix that!
+I need your M-Pesa statement to see your cashflow.
 
-Your M-Pesa statement unlocks:
-✅ Business profit report
-✅ VAT liability estimate
-✅ Cash flow summary
+Your statement allows me to:
+✅ Calculate your total inflows/outflows
+✅ Identify your top customers
+✅ Provide raw cashflow metrics
 
-Use the buttons below to get started:"""
+Use the buttons below to upload your file:"""
+
+REPORT_STATEMENT_REQUIRED = """\
+📊 *No Report Data Yet*
+
+I need your M-Pesa statement before I can generate a business report.
+
+Your report will show:
+✅ *AI Business Insights:* Net profit & trends
+✅ *Tax Estimates:* Pre-filled VAT/PAYE logic
+✅ *Cash Flow Summary:* Professional breakdown
+
+👉 Upload your M-Pesa statement using /statement"""
 
 # ── Statement Ingestion Flow (T6F-EMPTY-STATE) ────────────────────────────────
 

@@ -126,16 +126,7 @@ async def _render_report_empty_state(update: Update) -> None:
     
     Explains the dependency on M-Pesa data before a report can be generated.
     """
-    text = (
-        "📊 *No Report Data Yet*\n\n"
-        "I need your M-Pesa statement before I can generate a business report.\n\n"
-        "Your report will show:\n"
-        "✅ Business profit summary\n"
-        "✅ VAT liability estimate\n"
-        "✅ Cash flow summary\n\n"
-        "👉 Upload your M-Pesa statement using /statement"
-    )
-    await _reply(update, text)
+    await _reply(update, M.REPORT_STATEMENT_REQUIRED)
 
 
 # ── KPLC SMS helpers (P16-FIX-FINAL) ─────────────────────────────────────────
@@ -1553,7 +1544,7 @@ async def _run_pipeline_and_reply(
                 else:
                     await context.bot.send_message(
                         chat_id=tid,
-                        text=M.STATEMENT_REQUIRED,
+                        text=M.REPORT_STATEMENT_REQUIRED,
                         parse_mode=ParseMode.MARKDOWN,
                     )
                 return
