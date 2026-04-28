@@ -1548,11 +1548,14 @@ async def _run_pipeline_and_reply(
                     ))
                 trigger_source = "live_feed"
             else:
-                await context.bot.send_message(
-                    chat_id=tid,
-                    text=M.STATEMENT_REQUIRED,
-                    parse_mode=ParseMode.MARKDOWN,
-                )
+                if trigger_source == "telegram_command":
+                    await _render_report_empty_state(update)
+                else:
+                    await context.bot.send_message(
+                        chat_id=tid,
+                        text=M.STATEMENT_REQUIRED,
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
                 return
 
         result = await asyncio.get_event_loop().run_in_executor(
