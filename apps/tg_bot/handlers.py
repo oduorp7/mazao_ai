@@ -31,6 +31,7 @@ from telegram import (
     BotCommand,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    CallbackQuery,
 )
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -117,6 +118,24 @@ async def _render_statement_empty_state(update: Update) -> None:
         [InlineKeyboardButton("❓ How to Export", callback_data="statement_guide")],
     ])
     await _reply(update, M.STATEMENT_REQUIRED, reply_markup=keyboard)
+
+
+# ── T6F-EMPTY-STATE: Report empty-state renderer ────────────────────────────
+async def _render_report_empty_state(update: Update) -> None:
+    """Render the UX-separated empty-state for /report.
+    
+    Explains the dependency on M-Pesa data before a report can be generated.
+    """
+    text = (
+        "📊 *No Report Data Yet*\n\n"
+        "I need your M-Pesa statement before I can generate a business report.\n\n"
+        "Your report will show:\n"
+        "✅ Business profit summary\n"
+        "✅ VAT liability estimate\n"
+        "✅ Cash flow summary\n\n"
+        "Use /statement to upload your M-Pesa CSV."
+    )
+    await _reply(update, text)
 
 
 # ── KPLC SMS helpers (P16-FIX-FINAL) ─────────────────────────────────────────
@@ -1020,7 +1039,7 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # P3-T2: Check if a statement has been uploaded
         statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
         if not statement:
-            await _render_statement_empty_state(update)
+            await _render_report_empty_state(update)
             return
 
         # P7-T6: Feature Gating
