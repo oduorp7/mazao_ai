@@ -51,6 +51,27 @@
       "severity": "HIGH",
       "location": "apps/agent/estimator.py",
       "recommendation": "Add a data-completeness score to all /vat and /kra reports."
+    },
+    "ux_compliance_layer": {
+      "finding": "Inconsistent Obligation Formatting (T20H)",
+      "impact": "Statutory blocks (VAT, PAYE, NSSF, SHA) use different formats, reducing scannability on mobile.",
+      "severity": "MEDIUM",
+      "location": "apps/tg_bot/handlers.py",
+      "recommendation": "Standardize all obligation blocks to a bulleted, compact format with Rule, Penalty, and Days left."
+    },
+    "personalization_gap": {
+      "finding": "Generic User-Type Assumptions (T20I)",
+      "impact": "Obligations are not differentiated between Employer, Self-employed, and Individual users.",
+      "severity": "MEDIUM",
+      "location": "apps/tg_bot/handlers.py",
+      "recommendation": "Implement user-state detection and tailored obligation views."
+    },
+    "compliance_logic_duplication": {
+      "finding": "Compliance Logic Fragmentation (T20J)",
+      "impact": "Statutory rules and deadlines are duplicated across handlers and agents, creating drift risk.",
+      "severity": "HIGH",
+      "location": "Multiple",
+      "recommendation": "Centralize all statutory rules into a single pluggable Compliance Engine abstraction."
     }
   },
   "moat_analysis": {

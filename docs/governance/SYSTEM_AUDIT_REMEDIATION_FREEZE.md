@@ -39,6 +39,9 @@ The following findings from `SYSTEM_AUDIT_REPORT.json` are strictly frozen for i
 | **Implicit Context Identity** | T20G | 🧊 FROZEN | NO |
 | **Black-Box Error Handling** | T20C | 🧊 FROZEN | NO |
 | **KRA/VAT Data Completeness** | T20B | 🧊 FROZEN* | Only trust-copy / unavailable-state fixes |
+| **Obligation Formatting** | T20H | 🧊 FROZEN | NO |
+| **User-Type Personalization** | T20I | 🧊 FROZEN | NO |
+| **Compliance Engine Abstraction**| T20J | 🧊 FROZEN | NO |
 
 ## 5. Allowed Work During Freeze
 - **T9H Daraja Live Activation**: Configuring secrets and running registration.
@@ -81,6 +84,9 @@ Once unfrozen, remediation will proceed in this order:
 5. `T20E`: Notification Registry Design.
 6. `T20F`: Webhook Backpressure Design.
 7. `T20G`: Wallet/Profile Scoping Design.
+8. `T20H`: Obligation Formatting Unification.
+9. `T20I`: User-Type Personalization Layer.
+10. `T20J`: Compliance Engine Abstraction.
 
 ## 10. Approval Requirements
 All Phase 20 designs must be approved by the Supervisor before any implementation begins.
