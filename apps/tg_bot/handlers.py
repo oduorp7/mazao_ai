@@ -133,7 +133,7 @@ async def _render_report_empty_state(update: Update) -> None:
         "✅ Business profit summary\n"
         "✅ VAT liability estimate\n"
         "✅ Cash flow summary\n\n"
-        "Use /statement to upload your M-Pesa CSV."
+        "👉 Upload your M-Pesa statement using /statement"
     )
     await _reply(update, text)
 

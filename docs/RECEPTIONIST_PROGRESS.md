@@ -21,6 +21,10 @@
 - [x] T8J: Telegram Command Ordering (Conversion-First).
 - [x] T8K: Command Surface Audit & VAT Trust Fix.
 - [x] T8M: Statutory Obligations Labeling & Trust Fix.
+- [x] T9I: /report vs /statement UI Separation Fix.
+    - Record: Separated no-data empty states for /report and /statement.
+    - Result: /report now explains dependency on M-Pesa statement, while /statement remains upload-oriented.
+    - Scope: Copy/UI only (No Phase 20 logic change).
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)
