@@ -418,7 +418,7 @@ Your statement allows me to:
 ✅ Identify your top customers
 ✅ Provide raw cashflow metrics
 
-Use the buttons below to upload your file:"""
+Tap Upload Statement below:"""
 
 REPORT_STATEMENT_REQUIRED = """\
 📊 *No Report Data Yet*
@@ -698,7 +698,7 @@ BUSINESS_STATUS_DASHBOARD = (
     "⚖️ *Tax Compliance*\n"
     "• VAT (due 20th): {vat_days} days\n"
     "• PAYE (due 9th): {paye_days} days\n"
-    "• Annual Return (30 Jun): {annual_days} days\n\n"
+    "• Annual Income Tax Return (30 Jun): {annual_days} days\n\n"
     "📂 *Latest Statement Summary*\n"
     "{statement_summary}\n\n"
     "💳 *Subscriptions*\n"
