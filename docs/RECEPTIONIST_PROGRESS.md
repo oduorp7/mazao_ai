@@ -30,9 +30,42 @@
 - [x] T10A: Architecture & Design Documentation.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
-- [ ] T10C: Wallet Context Middleware Implementation.
-- [ ] T10D: Multi-Number Command Surface (/wallets).
-- [ ] T10E: Transaction Scoping & RLS Verification.
+- [ ] T20C: Discriminatory Error Handling Design. [LOCKED]
+- [ ] T20D: Handler Modularization Design. [LOCKED]
+- [ ] T20E: Notification Registry Design. [LOCKED]
+- [ ] T20F: Webhook Backpressure Design. [LOCKED]
+- [ ] T20G: Wallet/Profile Scoping Design. [LOCKED]
+- [ ] T20H: Obligation Formatting Unification. [LOCKED]
+    - Objective: Standardize all statutory obligation blocks (VAT, PAYE, NSSF, SHA)
+    - Output format:
+    - • {Name} — Due {Date}
+    - Rule: {short rule}
+    - Penalty: {if applicable}
+    - Days left: {n}
+    - Constraints:
+    - - Maintain mobile-first compact layout
+    - - No paragraph expansion
+    - - Preserve trust-safe wording
+- [ ] T20I: User-Type Personalization Layer. [LOCKED]
+    - Objective: Differentiate obligations for Employer, Self-employed, Individual
+    - Requirements:
+    - - No hallucinated assumptions
+    - - Explicit user-state detection
+    - - Graceful fallback to generic view
+- [ ] T20J: Compliance Engine Abstraction. [LOCKED]
+    - Objective: Centralize all statutory rules into single engine
+    - Requirements:
+    - - Single source of truth for deadlines
+    - - Remove duplicated constants
+    - - Pluggable rule system (VAT, PAYE, NSSF, SHA)
+    - Constraint:
+    - - No breaking changes to existing handlers
+- [ ] T10C: Wallet Context Middleware Implementation. [LOCKED]
+- [ ] T10D: Multi-Number Command Surface (/wallets). [LOCKED]
+- [ ] T10E: Transaction Scoping & RLS Verification. [LOCKED]
+
+> [!NOTE]
+> **GOVERNANCE ENFORCEMENT**: All T20H–T20J tasks are registered for architectural planning only. Do not implement before Phase 19 completion. Reference [SYSTEM_AUDIT_REMEDIATION_FREEZE.md](governance/SYSTEM_AUDIT_REMEDIATION_FREEZE.md).
 
 ## System Readiness
 - **Business Logic**: Stable.
