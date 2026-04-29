@@ -187,7 +187,7 @@ Reply /help if you need the step-by-step iTax guide.\
 
 # ── KRA obligations ───────────────────────────────────────────────────────────
 
-KRA_OBLIGATIONS_HEADER = "📋 *Upcoming Statutory Obligations*\n\n"
+KRA_OBLIGATIONS_HEADER = "📊 *Statutory Deadlines*\n_Official tax & compliance schedule_\n\n"
 
 KRA_OBLIGATION_GROUP = "{icon} *{group_name}*\n"
 
@@ -338,7 +338,7 @@ INDIVIDUAL_ASK_SHA = "🏥 Do you have an *SHA (Social Health Authority) number*
 
 INDIVIDUAL_SETUP_COMPLETE = "🎉 *You're all set, {name}!*\n\nI'll track your personal KRA deadlines and SHA reminders.\n\nType /help anytime to see your commands."
 
-MYSTATUS_HEADER = "👤 *Personal Status — {name}*\nStatus: {status}\n\n*Upcoming Obligations:*\n"
+MYSTATUS_HEADER = "👤 *Personal Status — {name}*\nStatus: {status}\n\n📌 *Your Key Obligations*\n_Personal overview based on your profile_\n"
 
 MYSTATUS_OBLIGATION_ROW = "{icon} *{name}* — Due {due_date}\n   {description}\n   Days left: {days_left}\n\n"
 
@@ -418,7 +418,7 @@ Your statement allows me to:
 ✅ Identify your top customers
 ✅ Provide raw cashflow metrics
 
-Tap Upload Statement below:"""
+Tap Upload Statement below"""
 
 REPORT_STATEMENT_REQUIRED = """\
 📊 *No Report Data Yet*
@@ -698,7 +698,8 @@ BUSINESS_STATUS_DASHBOARD = (
     "⚖️ *Tax Compliance*\n"
     "• VAT (due 20th): {vat_days} days\n"
     "• PAYE (due 9th): {paye_days} days\n"
-    "• Annual Income Tax Return (30 Jun): {annual_days} days\n\n"
+    "• Annual Income Tax Return (30 Jun): {annual_days} days\n"
+    "  (For income earned in the previous year)\n\n"
     "📂 *Latest Statement Summary*\n"
     "{statement_summary}\n\n"
     "💳 *Subscriptions*\n"
