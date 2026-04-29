@@ -696,6 +696,7 @@ BUSINESS_STATUS_DASHBOARD = (
     "Plan: {plan_tier}\n"
     "━━━━━━━━━━━━━━━━━━━\n\n"
     "⚖️ *Tax Compliance*\n"
+    "_Official statutory deadlines_\n"
     "• VAT (due 20th): {vat_days} days\n"
     "• PAYE (due 9th): {paye_days} days\n"
     "• Annual Income Tax Return (30 Jun): {annual_days} days\n"

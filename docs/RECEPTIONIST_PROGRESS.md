@@ -31,6 +31,12 @@
     - Audit: Annual Income Tax Return (30 Jun) is a SEPARATE statutory obligation from VAT (20th monthly) and PAYE (9th monthly). No discrepancy — different obligation types.
     - Statutory logic changed: NO.
     - Scope: Copy/UI only. Phase 20 lock intact.
+- [x] T9U: Cross-surface UX differentiation between /status and /kra completed.
+    - Record: Updated /status (Individual) header to "📌 Your Key Obligations" with context signal.
+    - Record: Updated /kra header to "📊 Statutory Deadlines" with "Official tax & compliance schedule" signal.
+    - Record: Added "_Official statutory deadlines_" context to /status (Business) dashboard.
+    - Result: Distinguishable surfaces within 2 seconds.
+    - Scope: Copy/UI only. Phase 20 lock intact.
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)
