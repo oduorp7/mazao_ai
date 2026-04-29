@@ -187,6 +187,7 @@ Reply /help if you need the step-by-step iTax guide.\
 
 # ── KRA obligations ───────────────────────────────────────────────────────────
 
+# P19-T9V: Source Aligned Header
 KRA_OBLIGATIONS_HEADER = "📊 *Statutory Deadlines*\n_Official tax & compliance schedule_\n\n"
 
 KRA_OBLIGATION_GROUP = "{icon} *{group_name}*\n"

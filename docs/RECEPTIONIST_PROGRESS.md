@@ -37,6 +37,11 @@
     - Record: Added "_Official statutory deadlines_" context to /status (Business) dashboard.
     - Result: Distinguishable surfaces within 2 seconds.
     - Scope: Copy/UI only. Phase 20 lock intact.
+- [x] T9V: /kra Header Source Alignment & Logic Verification.
+    - Record: Traced /kra header to `M.KRA_OBLIGATIONS_HEADER` and ensured alignment with "📊 Statutory Deadlines".
+    - Record: Confirmed `/kra` and `/status` logic separation; no statutory dates changed.
+    - Result: Live /kra now displays intended header and context label.
+    - Scope: Copy/UI only. Phase 20 lock intact.
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)
