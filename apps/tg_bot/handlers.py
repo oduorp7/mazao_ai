@@ -1211,7 +1211,7 @@ async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         n = len(readings)
         
         # Calculate rates — unpack tuple from updated estimator
-        h_type = tenant.get("household_type", "standard")
+        h_type = tenant.get("household_type") or "standard"
         pop_rate = estimator.get_population_baseline(h_type)
         pers_rate, n_valid = estimator.calculate_weighted_personal_rate(readings)
 

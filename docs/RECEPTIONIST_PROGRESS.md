@@ -97,6 +97,12 @@
     - Engineering: Moved state strings to `messages.py` constants for cleaner role logic and future Phase 20 pipeline preparation.
     - Result: Cleaner, high-conversion status surface for super-admins.
     - Scope: UX/Semantic refinement. Phase 20 lock intact.
+- [x] T9AI: KPLC Token NULL `household_type` Runtime Fix.
+    - Record: Resolved post-write projection crash during token ingestion.
+    - Context: Root cause was `tenant.get('household_type', 'standard')` returning `None` when DB column was `NULL`, causing `estimator.get_population_baseline` to crash.
+    - Engineering: Applied Python `or` fallback in `handlers.py` and defensive `None`-check in `estimator.py`.
+    - Result: Restored KPLC token parsing atomicity and success response generation without electricity model redesign.
+    - Scope: Runtime bug fix. Phase 20 lock intact.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T20C: Discriminatory Error Handling Design. [LOCKED]

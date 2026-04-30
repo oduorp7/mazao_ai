@@ -40,6 +40,8 @@ GAS_SOURCE_LABELS = {
 
 def get_population_baseline(household_type: str) -> float:
     """Returns daily electricity rate from population baselines."""
+    if not household_type:
+        return POPULATION_BASELINES["standard"]
     return POPULATION_BASELINES.get(household_type.lower(), POPULATION_BASELINES["standard"])
 
 def get_gas_population_baseline(household_type: str) -> float:
