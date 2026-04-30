@@ -38,6 +38,12 @@ def parse(data: bytes | str, fmt: str) -> List[RawTransaction]:
     return deduped
 
 def _parse_csv(text: str) -> List[RawTransaction]:
+    def get_any(row, keys, default=None):
+        for k in keys:
+            if row.get(k) is not None:
+                return row[k]
+        return default
+
     txs = []
     f = io.StringIO(text)
     # The first line might be metadata, handle skip if needed.
@@ -47,14 +53,14 @@ def _parse_csv(text: str) -> List[RawTransaction]:
     for row in reader:
         try:
             # MySafaricom CSV columns: Receipt No, Completion Time, Details, Transaction Status, Paid In, Withdrawn, Balance
-            receipt = row.get("Receipt No")
-            status = row.get("Transaction Status")
+            receipt = get_any(row, ["Receipt No", "Receipt No.", "Receipt", "Receipt Number"])
+            status = get_any(row, ["Transaction Status", "Status"])
             
             if not receipt or str(status).lower() != "completed":
                 continue
                 
-            paid_in_str = row.get("Paid In", "0") or "0"
-            withdrawn_str = row.get("Withdrawn", "0") or "0"
+            paid_in_str = get_any(row, ["Paid In", "PaidIn", "Credit"], "0") or "0"
+            withdrawn_str = get_any(row, ["Withdrawn", "Debit", "Paid Out"], "0") or "0"
             
             paid_in = float(paid_in_str.replace(",", ""))
             withdrawn = float(withdrawn_str.replace(",", ""))
@@ -64,7 +70,7 @@ def _parse_csv(text: str) -> List[RawTransaction]:
             tx_type = TransactionType.C2B if paid_in > 0 else TransactionType.B2C
             
             # Format: 2024-04-18 14:30:00
-            ts_str = row.get("Completion Time")
+            ts_str = get_any(row, ["Completion Time", "CompletionTime", "Date"])
             try:
                 ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
             except Exception:
@@ -74,12 +80,13 @@ def _parse_csv(text: str) -> List[RawTransaction]:
                 mpesa_ref=receipt,
                 amount=amount,
                 phone="", 
-                name=row.get("Details", "UNKNOWN"),
+                name=get_any(row, ["Details", "Description"], "UNKNOWN"),
                 shortcode="",
                 transaction_type=tx_type,
                 timestamp=ts,
                 raw_payload=row
             ))
+
         except (ValueError, TypeError, KeyError) as e:
             continue
             

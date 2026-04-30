@@ -103,6 +103,12 @@
     - Engineering: Applied Python `or` fallback in `handlers.py` and defensive `None`-check in `estimator.py`.
     - Result: Restored KPLC token parsing atomicity and success response generation without electricity model redesign.
     - Scope: Runtime bug fix. Phase 20 lock intact.
+- [x] T9AK: M-Pesa CSV Header Alias Compatibility Fix.
+    - Record: Resolved silent rejection of MySafaricom CSV uploads.
+    - Context: Root cause was strict dictionary key lookup for `Receipt No` failing against actual `Receipt No.` header.
+    - Engineering: Introduced `get_any` helper in `_parse_csv` to support flexible alias mapping for all required columns.
+    - Result: MySafaricom CSVs now parse correctly without altering the core pipeline, schema, or reporting engine.
+    - Scope: Compatibility patch. Phase 20 lock intact.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T20C: Discriminatory Error Handling Design. [LOCKED]
