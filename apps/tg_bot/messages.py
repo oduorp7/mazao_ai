@@ -367,6 +367,8 @@ ADMIN_BUSINESS_STATUS = """\
 — Statement: {statement_status}
 — Cashflow: {cashflow_status}
 
+👉 Upload statement via /statement
+
 📌 *Compliance Snapshot*
 — VAT: Due 20 May 2026
 — PAYE: Due 09 May 2026
@@ -378,6 +380,14 @@ ADMIN_BUSINESS_STATUS = """\
 
 ⚙️ Edit your details: /settings\
 """
+
+# Business Overview States (P19-T9AG)
+STATE_REPORT_NOT_READY = "Not ready"
+STATE_REPORT_READY = "Ready ✅"
+STATE_REPORT_PENDING = "Not generated yet"
+STATE_STATEMENT_NOT_UPLOADED = "Not uploaded"
+STATE_CASHFLOW_LOCKED = "Locked (requires statement)"
+STATE_CASHFLOW_AVAILABLE = "Available ✅"
 
 ASK_LANGUAGE = "🌐 *Language Preference / Mapendekezo ya Lugha*\n\nWhich language do you prefer for your reports?\nUnapendelea lugha gani kwa ripoti zako?"
 

@@ -91,6 +91,12 @@
     - Context: Updated "Not uploaded" and "Not ready" states to include actionable prompts (e.g., "use /statement").
     - Result: Improved discoverability and UX flow for administrative tasks.
     - Scope: UX/Copy refinement. Phase 20 lock intact.
+- [x] T9AG: Admin /status Copy Conversion & Pipeline Prep.
+    - Record: Eliminated redundant inline CTAs in Business Overview and established single-anchor CTA.
+    - Semantics: Introduced "Locked (requires statement)" state for Cashflow to establish clear data dependency.
+    - Engineering: Moved state strings to `messages.py` constants for cleaner role logic and future Phase 20 pipeline preparation.
+    - Result: Cleaner, high-conversion status surface for super-admins.
+    - Scope: UX/Semantic refinement. Phase 20 lock intact.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T20C: Discriminatory Error Handling Design. [LOCKED]
