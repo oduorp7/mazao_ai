@@ -2170,9 +2170,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             latest_report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
             
             if not statement:
-                report_status = "Not ready — upload statement"
-                statement_status = "Not uploaded"
-                cashflow_status = "Pending statement"
+                report_status = "Not ready → upload via /statement"
+                statement_status = "Not uploaded → use /statement"
+                cashflow_status = "Pending statement upload"
             else:
                 period = statement.get("period", "Uploaded")
                 statement_status = f"{period} ✅"

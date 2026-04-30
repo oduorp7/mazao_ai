@@ -86,6 +86,11 @@
     - Context: Report state now truthfully depends on statement availability (e.g., "Not ready — upload statement" if missing).
     - Result: Resolved misleading "Report Available" state when data dependencies were unmet.
     - Scope: UX/Trust state fix. Phase 20 lock intact.
+- [x] T9AF: Admin /status Actionable UX Refinement.
+    - Record: Refined super-admin status copy to point missing data states to `/statement`.
+    - Context: Updated "Not uploaded" and "Not ready" states to include actionable prompts (e.g., "use /statement").
+    - Result: Improved discoverability and UX flow for administrative tasks.
+    - Scope: UX/Copy refinement. Phase 20 lock intact.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T20C: Discriminatory Error Handling Design. [LOCKED]
