@@ -74,6 +74,13 @@
     - Context: Admins can now view the full Business/Admin dashboard even if their personal profile is set to "individual".
     - Result: Resolved routing conflict identified in T9AA.
     - Scope: Role logic fix. Phase 20 lock intact.
+- [x] T9AD: Super-Admin /status Business Overview Enhancement.
+    - Record: Upgraded super-admin `/status` to a comprehensive business overview surface.
+    - Context: Replaced simple account summary with data-rich overview including Report, Statement, and Cashflow markers.
+    - Compliance: Added hardcoded compliance snapshot (VAT/PAYE/NSSF) as per Phase 19 targets.
+    - Safety: Used existing `get_latest_statement` and `get_latest_report` queries only.
+    - Result: Improved visibility for administrative roles without data model changes.
+    - Scope: UX/Surface upgrade. Phase 20 lock intact.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T20C: Discriminatory Error Handling Design. [LOCKED]

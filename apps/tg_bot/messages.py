@@ -359,6 +359,26 @@ No tokens logged yet. Use /tokens to start tracking.
 
 MYSTATUS_BUSINESS_REDIRECT = "ℹ️ This command is for individual users.\n\nUse /status for your business dashboard."
 
+ADMIN_BUSINESS_STATUS = """\
+🏢 *{biz_name}*
+
+📊 *Business Overview*
+— Report: {report_status}
+— Statement: {statement_status}
+— Cashflow: {cashflow_status}
+
+📌 *Compliance Snapshot*
+— VAT: Due 20 May 2026
+— PAYE: Due 09 May 2026
+— NSSF: Due 09 May 2026
+
+🚀 *Account*
+— Plan: Super Admin
+— Status: Active
+
+⚙️ Edit your details: /settings\
+"""
+
 ASK_LANGUAGE = "🌐 *Language Preference / Mapendekezo ya Lugha*\n\nWhich language do you prefer for your reports?\nUnapendelea lugha gani kwa ripoti zako?"
 
 LANGUAGE_SET_EN = "✅ Language set to *English*. You will receive your reports in English."

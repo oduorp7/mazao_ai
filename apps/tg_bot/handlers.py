@@ -2162,6 +2162,26 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         # ── 1. Header ──────────────────────────────────────────────────────────
         biz_name = tenant.get("business_name") or "Your Business"
+        
+        if is_superadmin:
+            # P19-T9AD: Admin Business Overview
+            # Fetch existing data markers (Read-only)
+            statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
+            latest_report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
+            
+            report_status = "Available ✅" if latest_report else "No reports yet"
+            statement_status = statement.get("period", "Active") if (statement and statement.get("period")) else "Not uploaded"
+            cashflow_status = "Available ✅" if statement else "Pending statement"
+            
+            text = M.ADMIN_BUSINESS_STATUS.format(
+                biz_name=biz_name,
+                report_status=report_status,
+                statement_status=statement_status,
+                cashflow_status=cashflow_status
+            )
+            await _reply(update, text)
+            return
+
         report = f"🏢 *{biz_name}*\n\n"
 
         # ── 2. Account Section ─────────────────────────────────────────────────
