@@ -1374,7 +1374,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if mime == "text/csv" or ext == ".csv":
         fmt = "csv"
     elif mime == "application/pdf" or ext == ".pdf":
-        fmt = "pdf_text"
+        await _reply(update, M.UNSUPPORTED_FILE_FORMAT)
+        return
     elif mime == "text/plain" or ext == ".txt":
         fmt = "sms"
     

@@ -433,7 +433,7 @@ INDIVIDUAL_NSSF_ALERT = """\
 Tier 1 and Tier 2 contributions are due to avoid compounded interest.\
 """
 
-UNSUPPORTED_FILE_FORMAT = "⚠️ *Unsupported File Format*\n\nPlease send a .csv (from M-Pesa app) or forward your M-Pesa SMS text. PDFs are also supported if they contain text."
+UNSUPPORTED_FILE_FORMAT = "❌ *Unsupported format*\n\nPlease upload your M-Pesa statement as a CSV file.\nExport it from the MySafaricom app.\nPDF is not supported yet."
 
 STATEMENT_RECEIVED_PARSING = "📥 *Statement received!*\n\nI'm parsing your transactions now. Please wait..."
 
@@ -472,8 +472,8 @@ STATEMENT_UPLOAD_PROMPT = """\
 
 Please send the CSV file exported from your MySafaricom app.
 
-_Supported format: .csv (standard M-Pesa export)_
-_PDF and SMS formats are not yet supported._
+_Supported format: .csv (M-Pesa export)_
+_PDF and SMS formats are not supported yet._
 
 Send the file now, or type /cancel to exit."""
 

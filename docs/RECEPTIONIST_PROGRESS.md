@@ -109,6 +109,12 @@
     - Engineering: Introduced `get_any` helper in `_parse_csv` to support flexible alias mapping for all required columns.
     - Result: MySafaricom CSVs now parse correctly without altering the core pipeline, schema, or reporting engine.
     - Scope: Compatibility patch. Phase 20 lock intact.
+- [x] T9AM: PDF Block & Statement Flow Alignment.
+    - Record: Blocked PDF statements from entering the ingestion pipeline to prevent binary decoding errors.
+    - Context: PDF uploads were hitting the CSV/text parser, causing `utf-8` decoding failures and ambiguous error messages.
+    - Engineering: Short-circuited PDF MIME/extension in `handlers.py` to fail fast. Aligned `messages.py` copy to strictly instruct CSV uploads.
+    - Result: Zero CPU waste on PDFs, deterministic user feedback, and alignment between UX and system capabilities.
+    - Scope: Runtime safeguard and copy alignment. Phase 20 lock intact.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T20C: Discriminatory Error Handling Design. [LOCKED]
