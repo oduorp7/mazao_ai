@@ -339,6 +339,8 @@ INDIVIDUAL_ASK_SHA = "🏥 Do you have an *SHA (Social Health Authority) number*
 
 INDIVIDUAL_SETUP_COMPLETE = "🎉 *You're all set, {name}!*\n\nI'll track your personal KRA deadlines and SHA reminders.\n\nType /help anytime to see your commands."
 
+PERSONAL_STATUS_NOTICE = "👤 *Personal Status*\nShowing your personal dashboard"
+
 MYSTATUS_HEADER = "👤 *Personal Status — {name}*\nStatus: {status}\n\n📌 *Your Key Obligations*\n_Personal overview based on your profile_\n"
 
 MYSTATUS_OBLIGATION_ROW = "{icon} *{name}* — Due {due_date}\n   {description}\n   Days left: {days_left}\n\n"

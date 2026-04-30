@@ -899,7 +899,7 @@ async def cmd_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # ── /mystatus ─────────────────────────────────────────────────────────────────
 
-async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE, notice: str = "") -> None:
     """Displays the upcoming obligations for an individual user."""
     try:
         tid = _tg_id(update)
@@ -925,6 +925,9 @@ async def cmd_mystatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             name=tenant.get("full_name", _username(update)),
             status=status_label
         )
+        
+        if notice:
+            text = notice + "\n\n" + text
         
         today = datetime.now(timezone.utc)
         
@@ -2147,10 +2150,14 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if not await is_feature_allowed(str(tenant["id"]), "report"):
             await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Business Dashboard", upgrade_link="/upgrade"))
             return
-        
-        # P5-T3: Redirect Individual users
-        if tenant.get("user_type") == "individual":
-            await cmd_mystatus(update, context)
+
+        # P19-T9AB: Admin Detection
+        admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+        is_superadmin = admin_id and str(tid) == str(admin_id)
+
+        # P5-T3: Redirect Individual users (Bypassed for Super Admin)
+        if tenant.get("user_type") == "individual" and not is_superadmin:
+            await cmd_mystatus(update, context, notice=M.PERSONAL_STATUS_NOTICE)
             return
 
         # ── 1. Header ──────────────────────────────────────────────────────────
@@ -2168,9 +2175,6 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
 
         # ── 3. Plan Section ────────────────────────────────────────────────────
-        admin_id = os.getenv("ADMIN_TELEGRAM_ID")
-        is_superadmin = admin_id and str(tid) == str(admin_id)
-        
         if is_superadmin:
             plan = "Super Admin"
             status = "Active"
