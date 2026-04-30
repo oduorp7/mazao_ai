@@ -81,6 +81,11 @@
     - Safety: Used existing `get_latest_statement` and `get_latest_report` queries only.
     - Result: Improved visibility for administrative roles without data model changes.
     - Scope: UX/Surface upgrade. Phase 20 lock intact.
+- [x] T9AE: Admin /status Report-State Truth Fix.
+    - Record: Corrected report readiness logic in super-admin `/status` overview.
+    - Context: Report state now truthfully depends on statement availability (e.g., "Not ready — upload statement" if missing).
+    - Result: Resolved misleading "Report Available" state when data dependencies were unmet.
+    - Scope: UX/Trust state fix. Phase 20 lock intact.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T20C: Discriminatory Error Handling Design. [LOCKED]

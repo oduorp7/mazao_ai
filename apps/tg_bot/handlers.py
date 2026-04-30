@@ -2169,9 +2169,15 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
             latest_report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
             
-            report_status = "Available ✅" if latest_report else "No reports yet"
-            statement_status = statement.get("period", "Active") if (statement and statement.get("period")) else "Not uploaded"
-            cashflow_status = "Available ✅" if statement else "Pending statement"
+            if not statement:
+                report_status = "Not ready — upload statement"
+                statement_status = "Not uploaded"
+                cashflow_status = "Pending statement"
+            else:
+                period = statement.get("period", "Uploaded")
+                statement_status = f"{period} ✅"
+                cashflow_status = "Available ✅"
+                report_status = "Ready ✅" if latest_report else "Not generated yet"
             
             text = M.ADMIN_BUSINESS_STATUS.format(
                 biz_name=biz_name,
