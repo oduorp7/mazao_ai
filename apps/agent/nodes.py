@@ -456,7 +456,13 @@ def compute_obligations(state: AgentState) -> dict:
     node_name = "compute_obligations"
     start = time.perf_counter()
 
-    log.info("node_start", node=node_name, tenant_id=state.tenant_id)
+    log.info(
+        "node_entry",
+        node=node_name,
+        tenant_id=state.tenant_id,
+        recon_available=state.reconciliation is not None,
+        tx_count=len(state.raw_transactions)
+    )
 
     try:
         recon = state.reconciliation
@@ -517,7 +523,7 @@ def compute_obligations(state: AgentState) -> dict:
         obligations.sort(key=lambda x: x.days_until_due)
 
         log.info(
-            "node_success",
+            "node_exit",
             node=node_name,
             tenant_id=state.tenant_id,
             vat_payable=net_vat,
@@ -533,6 +539,15 @@ def compute_obligations(state: AgentState) -> dict:
 
     except Exception as exc:
         msg = f"{node_name} failed: {exc}"
+        import traceback
+        st = traceback.format_exc()
+        log.error(
+            "node_failure",
+            node=node_name,
+            tenant_id=state.tenant_id,
+            error=str(exc),
+            stack_trace=st
+        )
         log.exception("node_error", node=node_name, tenant_id=state.tenant_id)
         return {
             "errors": [msg],
@@ -614,7 +629,13 @@ def generate_report(state: AgentState) -> dict:
     node_name = "generate_report"
     start = time.perf_counter()
 
-    log.info("node_start", node=node_name, tenant_id=state.tenant_id)
+    log.info(
+        "node_entry",
+        node=node_name,
+        tenant_id=state.tenant_id,
+        vat_available=state.vat_return is not None,
+        obs_count=len(state.upcoming_obligations)
+    )
 
     try:
         prompt = _build_report_prompt(state)
@@ -634,24 +655,37 @@ def generate_report(state: AgentState) -> dict:
             )
             r = state.reconciliation
             v = state.vat_return
+            obs = state.upcoming_obligations
             
-            # FAANG-Grade Template Fallback
+            # FAANG-Grade Deterministic Fallback (P19-T9AS)
             vat_line = f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.0f}\n" if v and v.net_vat_payable > 0 else ""
             
-            report_en = (
-                f"📊 *Mazao AI Business Report (Standard Mode)*\n\n"
-                f"Your AI engine is currently in Maintenance Mode, but I have calculated your raw metrics directly:\n\n"
+            # Extract most urgent obligation if available
+            next_ob = obs[0] if obs else None
+            ob_line = ""
+            if next_ob:
+                ob_line = f"⏰ *Next Deadline:* {next_ob.obligation_type.value} ({next_ob.due_date.strftime('%d %b')}) — {next_ob.days_until_due} days left\n"
+
+            fallback_header = (
+                f"📊 *Mazao AI Business Summary*\n"
+                f"_AI insights currently unavailable; showing computed metrics_\n\n"
+            )
+
+            metrics_body = (
                 f"💰 *Total Income:* KES {(r.total_income if r else 0):,.0f}\n"
                 f"💸 *Total Expenses:* KES {(r.total_expenses if r else 0):,.0f}\n"
                 f"📈 *Net Profit:* KES {(r.net_profit if r else 0):,.0f}\n"
-                f"{vat_line}\n"
-                f"⚠️ *Alert:* {r.flagged_count if r else 0} transactions need review.\n\n"
-                f"Next Action: Please check your Anthropic dashboard to re-enable Premium Insights."
+                f"{vat_line}"
+                f"{ob_line}"
+                f"\n⚠️ *Alert:* {r.flagged_count if r else 0} transactions need review.\n\n"
+                f"Next Action: Use /help for filing guides while we restore AI insights."
             )
-            report_sw = report_en  # fallbackSwahili Template could be added here
+            
+            report_en = fallback_header + metrics_body
+            report_sw = report_en  # Swahili template could be localized in Phase 20
 
         log.info(
-            "node_success",
+            "node_exit",
             node=node_name,
             tenant_id=state.tenant_id,
             en_length=len(report_en),
@@ -666,6 +700,15 @@ def generate_report(state: AgentState) -> dict:
 
     except Exception as exc:
         msg = f"{node_name} failed: {exc}"
+        import traceback
+        st = traceback.format_exc()
+        log.error(
+            "node_failure",
+            node=node_name,
+            tenant_id=state.tenant_id,
+            error=str(exc),
+            stack_trace=st
+        )
         log.exception("node_error", node=node_name, tenant_id=state.tenant_id)
         return {
             "errors": [msg],

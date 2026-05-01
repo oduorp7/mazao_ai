@@ -72,6 +72,13 @@
     - Engineering: Added `from collections import defaultdict` to `nodes.py`.
     - Result: Aggregation layer restored; report generation now completes successfully.
     - Scope: Import fix only. Phase 20 lock intact.
+- [x] T9AS: LLM Report Fallback Containment & Deterministic Summary.
+    - Record: Contained fatal LLM report-generation failures by hardening the fallback path in `generate_report`.
+    - Context: LLM provider instability (OpenRouter/Anthropic) was causing the entire pipeline to fail even after successful parsing and aggregation.
+    - Engineering: Hardened `try/except` boundary in `generate_report` node and introduced a structured, deterministic fallback report using existing aggregation metrics.
+    - Fallback: Includes Total Income, Expenses, Net Profit, VAT estimate, and most urgent KRA obligation.
+    - Result: Users now receive a "Computed Summary" even if AI insight generation fails, ensuring data delivery.
+    - Scope: Failsafe containment only. Phase 20 lock intact.
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)
