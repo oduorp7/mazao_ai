@@ -79,6 +79,13 @@
     - Fallback: Includes Total Income, Expenses, Net Profit, VAT estimate, and most urgent KRA obligation.
     - Result: Users now receive a "Computed Summary" even if AI insight generation fails, ensuring data delivery.
     - Scope: Failsafe containment only. Phase 20 lock intact.
+- [x] T9AT: Report Return Contract Enforcement.
+    - Record: Guaranteed `generate_report` always returns a valid, renderable structure.
+    - Context: Downstream `send_whatsapp` node requires `report_text_en` to be a non-empty string. Pipeline crashes were observed when exceptions escaped even the T9AS fallback.
+    - Engineering: Wrapped entire `generate_report` in an outermost try/except guard and initialized critical return keys.
+    - Enforcement: Added an "Emergency Static Report" as a final safety boundary if all data-driven fallbacks fail.
+    - Result: Zero-crash guarantee for the reporting node.
+    - Scope: Return contract enforcement. Phase 20 lock intact.
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)

@@ -625,6 +625,9 @@ def generate_report(state: AgentState) -> dict:
     """
     Calls LLM (Claude or DeepSeek) to write bilingual (English + Swahili) WhatsApp reports.
     Falls back to a template-based report if LLM fails.
+    
+    GUARANTEE: This node must ALWAYS return a valid dict with 'report_text_en' 
+    to prevent downstream crashes in send_whatsapp.
     """
     node_name = "generate_report"
     start = time.perf_counter()
@@ -637,52 +640,49 @@ def generate_report(state: AgentState) -> dict:
         obs_count=len(state.upcoming_obligations)
     )
 
+    # 1. Outer Guard: Initialize critical return keys
+    report_en: str = ""
+    report_sw: str = ""
+
     try:
-        prompt = _build_report_prompt(state)
+        # 2. Extract Data
+        r = state.reconciliation
+        v = state.vat_return
+        obs = state.upcoming_obligations
 
-        report_en: str = ""
-        report_sw: str = ""
-
+        # 3. Inner LLM Try-Block (already hardened in T9AS)
         try:
+            prompt = _build_report_prompt(state)
             report_en = _call_llm_report(prompt, "English")
             report_sw = _call_llm_report(prompt, "Swahili")
-        except Exception as exc:
+        except Exception as llm_exc:
             log.warning(
                 "llm_report_failed_using_template",
                 node=node_name,
                 tenant_id=state.tenant_id,
-                error=str(exc),
+                error=str(llm_exc),
             )
-            r = state.reconciliation
-            v = state.vat_return
-            obs = state.upcoming_obligations
             
-            # FAANG-Grade Deterministic Fallback (P19-T9AS)
+            # FAANG-Grade Deterministic Fallback (P19-T9AS/T9AT Enforcement)
             vat_line = f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.0f}\n" if v and v.net_vat_payable > 0 else ""
-            
-            # Extract most urgent obligation if available
             next_ob = obs[0] if obs else None
-            ob_line = ""
-            if next_ob:
-                ob_line = f"⏰ *Next Deadline:* {next_ob.obligation_type.value} ({next_ob.due_date.strftime('%d %b')}) — {next_ob.days_until_due} days left\n"
+            ob_line = f"⏰ *Next Deadline:* {next_ob.obligation_type.value} ({next_ob.due_date.strftime('%d %b')}) — {next_ob.days_until_due} days left\n" if next_ob else ""
 
-            fallback_header = (
-                f"📊 *Mazao AI Business Summary*\n"
-                f"_AI insights currently unavailable; showing computed metrics_\n\n"
-            )
-
+            fallback_header = "📊 *Mazao AI Business Summary*\n_AI insights currently unavailable; showing computed metrics_\n\n"
             metrics_body = (
                 f"💰 *Total Income:* KES {(r.total_income if r else 0):,.0f}\n"
                 f"💸 *Total Expenses:* KES {(r.total_expenses if r else 0):,.0f}\n"
                 f"📈 *Net Profit:* KES {(r.net_profit if r else 0):,.0f}\n"
-                f"{vat_line}"
-                f"{ob_line}"
+                f"{vat_line}{ob_line}"
                 f"\n⚠️ *Alert:* {r.flagged_count if r else 0} transactions need review.\n\n"
                 f"Next Action: Use /help for filing guides while we restore AI insights."
             )
-            
             report_en = fallback_header + metrics_body
-            report_sw = report_en  # Swahili template could be localized in Phase 20
+            report_sw = report_en
+
+        # 4. Final Validation: Never return empty
+        if not report_en:
+            report_en = "📊 *Mazao AI Summary*\n\nYour report is being processed. Please check back in a few minutes or use /status for a quick overview."
 
         log.info(
             "node_exit",
@@ -694,27 +694,24 @@ def generate_report(state: AgentState) -> dict:
 
         return {
             "report_text_en": report_en,
-            "report_text_sw": report_sw,
+            "report_text_sw": report_sw or report_en,
             "node_results": [_record(node_name, NodeStatus.SUCCESS, start)],
         }
 
     except Exception as exc:
-        msg = f"{node_name} failed: {exc}"
+        # 5. Outermost Fail-Safe Return Contract
+        msg = f"{node_name} critical failure: {exc}"
         import traceback
         st = traceback.format_exc()
-        log.error(
-            "node_failure",
-            node=node_name,
-            tenant_id=state.tenant_id,
-            error=str(exc),
-            stack_trace=st
-        )
-        log.exception("node_error", node=node_name, tenant_id=state.tenant_id)
+        log.error("node_critical_failure", node=node_name, tenant_id=state.tenant_id, error=str(exc), stack_trace=st)
+        
+        emergency_report = "📊 *Mazao AI Business Summary*\n\nI encountered a technical issue generating your full report. Please use /status to see your latest income and expenses directly from the dashboard."
+        
         return {
+            "report_text_en": emergency_report,
+            "report_text_sw": emergency_report,
             "errors": [msg],
-            "node_results": [
-                _record(node_name, NodeStatus.FAILED, start, error=str(exc))
-            ],
+            "node_results": [_record(node_name, NodeStatus.FAILED, start, error=str(exc))],
         }
 
 
