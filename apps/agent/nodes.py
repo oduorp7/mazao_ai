@@ -24,16 +24,12 @@ Node execution order:
 
 from __future__ import annotations
 
-import os
 import time
-import uuid
 import json
-from datetime import datetime, timedelta
 from collections import defaultdict
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Optional, List
 
-import httpx
-from anthropic import Anthropic
 from langchain_core.messages import SystemMessage, HumanMessage
 from apps.agent.llm import get_llm
 from tenacity import (
@@ -56,6 +52,7 @@ from apps.agent.state import (
     NodeStatus,
 )
 from apps.agent import obligations as agent_obs
+import apps.tg_bot.db as db
 from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)

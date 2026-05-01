@@ -49,6 +49,29 @@
     - Result: confirmed intentional UX design for context-aware status rendering.
     - Status: Pending decision under Phase 19 freeze (No logic/path change made).
     - Scope: Read-only investigation. No files modified.
+- [x] T9AM: PDF Block & Statement Flow Alignment.
+    - Record: Blocked PDF statements from entering the ingestion pipeline to prevent binary decoding errors.
+    - Context: PDF uploads were hitting the CSV/text parser, causing `utf-8` decoding failures and ambiguous error messages.
+    - Engineering: Short-circuited PDF MIME/extension in `handlers.py` to fail fast. Aligned `messages.py` copy to strictly instruct CSV uploads.
+    - Result: Zero CPU waste on PDFs, deterministic user feedback, and alignment between UX and system capabilities.
+    - Scope: Runtime safeguard and copy alignment. Phase 20 lock intact.
+- [x] T9AN: Electricity Reality Model Trace & Forecast Audit.
+    - Record: Traced electricity consumption model and identified 24h/day continuous assumption.
+    - Context: Current system overestimates depletion during blackouts or appliance downtime.
+    - Finding: Schema update required for persistent power context; logic adjustment needed for effective daily consumption.
+    - Result: Confirmed read-only status; Phase 20 implementation requirements documented.
+    - Scope: Trace/Read-only. Phase 20 lock intact.
+- [x] T9AO: Electricity Context Schema Prep & Future Model Lock.
+    - Record: Documented Phase 20 electricity context model for blackouts and meter reconciliation.
+    - Context: Defined forecast policy where `effective_hours = 24 - (blackout + off_hours)`.
+    - Result: Future schema (`electricity_context_events`) and command surface (`/powercontext`, `/meter`) locked in backlog.
+    - Scope: Documentation only. No code/schema changes. Phase 20 lock intact.
+- [x] T9AQ: Report Aggregation NameError (defaultdict) Fix.
+    - Record: Resolved background pipeline crash during M-Pesa CSV report generation.
+    - Context: Root cause was missing `defaultdict` import in `apps/agent/nodes.py`, causing `NameError` during transaction aggregation.
+    - Engineering: Added `from collections import defaultdict` to `nodes.py`.
+    - Result: Aggregation layer restored; report generation now completes successfully.
+    - Scope: Import fix only. Phase 20 lock intact.
 - [ ] T9H: Live Activation Execution (Pending `DARAJA_PASSKEY`).
     
 ## Phase 20: Multi-Number Wallets (Roadmap)
@@ -109,12 +132,6 @@
     - Engineering: Introduced `get_any` helper in `_parse_csv` to support flexible alias mapping for all required columns.
     - Result: MySafaricom CSVs now parse correctly without altering the core pipeline, schema, or reporting engine.
     - Scope: Compatibility patch. Phase 20 lock intact.
-- [x] T9AM: PDF Block & Statement Flow Alignment.
-    - Record: Blocked PDF statements from entering the ingestion pipeline to prevent binary decoding errors.
-    - Context: PDF uploads were hitting the CSV/text parser, causing `utf-8` decoding failures and ambiguous error messages.
-    - Engineering: Short-circuited PDF MIME/extension in `handlers.py` to fail fast. Aligned `messages.py` copy to strictly instruct CSV uploads.
-    - Result: Zero CPU waste on PDFs, deterministic user feedback, and alignment between UX and system capabilities.
-    - Scope: Runtime safeguard and copy alignment. Phase 20 lock intact.
 - [ ] T20A: Audit Triage & Remediation Freeze. [FROZEN]
 - [ ] T20B: KRA/VAT Data Completeness Guard Design. [LOCKED]
 - [ ] T20C: Discriminatory Error Handling Design. [LOCKED]
@@ -147,6 +164,18 @@
     - - Pluggable rule system (VAT, PAYE, NSSF, SHA)
     - Constraint:
     - - No breaking changes to existing handlers
+- [ ] T20K: Electricity context schema migration. [LOCKED]
+    - Table: `electricity_context_events` (append-only)
+    - Fields: tenant_id, event_type (BLACKOUT|OFF), hours, created_at
+- [ ] T20L: Power context command surface. [LOCKED]
+    - Command: `/powercontext`
+    - UX: Optional input for blackout/appliance-off hours
+- [ ] T20M: Meter reading reconciliation. [LOCKED]
+    - Command: `/meter`
+    - Logic: Use user-reported units to reconcile projection drift
+- [ ] T20N: Availability-adjusted depletion forecast. [LOCKED]
+    - Model: `effective_hours = total_hours - blackout_hours - off_hours`
+    - Rule: Adjust forecast only; preserve historical token data integrity
 - [ ] T10C: Wallet Context Middleware Implementation. [LOCKED]
 - [ ] T10D: Multi-Number Command Surface (/wallets). [LOCKED]
 - [ ] T10E: Transaction Scoping & RLS Verification. [LOCKED]
