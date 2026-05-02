@@ -96,7 +96,7 @@ MIT
 
 ## Authors & Maintainers
 
-**Developed and maintained by:** Peter O. Oluoch — Backend Engineer & AI Architect/Engineer
+Authors & Maintainers: Peter O. Oluoch (Backend Engineer, AI Architect)
 
 ## Support
 
