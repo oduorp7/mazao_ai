@@ -1,209 +1,103 @@
-# Mazao AI — The Smart Kenyan Business Manager
+﻿# Mazao AI — Practical Business Automation for Kenya
 
-Mazao AI is a sovereign-grade Telegram AI Bot designed to automate tax compliance (KRA VAT/PAYE), financial reporting, and utility management for businesses and individuals in Kenya.
+Mazao AI is a Telegram-based automation tool for Kenyan businesses and individuals. It streamlines tax compliance, financial reporting, and utility management, with a focus on reliability, transparency, and local context.
 
-## 🚀 Key Features
+## Core Features
 
-*   **Real-time M-Pesa Tracking**: Automatic payment alerts via Africa's Talking C2B Bridge.
-*   **AI Financial Reporting**: Forward your M-Pesa statements for instant profit/loss analysis and tax estimates.
-*   **Tax Compliance**: Automated reminders for VAT (20th), PAYE (9th), and annual returns.
-*   **Utility Predictions**: Track Electricity (Token) depletion and Fuliza loan due dates.
-*   **Contextual Command Menus**: Dynamic command lists based on user profile and status-aware settings (e.g., current Home Type/Lang visible on buttons).
-*   **Dynamic Switcher**: Inline keyboard-based switcher with checkmark indicators and instant projection feedback.
-*   **Multi-Provider AI Engine**: Resilient "brain" supporting Anthropic (Claude) and OpenRouter (DeepSeek-V3) with automatic fallback.
-*   **Real-time M-Pesa (Daraja C2B)**: Native Safaricom integration (Sandbox live, Production pending Paybill approval).
-*   **Multi-language**: Seamless switching between English and Swahili.
-*   **Robust Trial Management**: Automated 14-day trials for all new users.
-*   **Superadmin Bypass**: Centralized FAANG-grade testing layer allowing authorized team members unrestricted access to all gated features while preserving strict subscription rules for normal users.
+- **M-Pesa Integration:** Real-time tracking and categorization of business and personal transactions (Daraja, Intasend supported).
+- **Automated Tax Reminders:** VAT, PAYE, and annual return alerts based on your actual transaction data.
+- **Financial Reporting:** Upload M-Pesa statements for instant profit/loss, VAT, and PAYE estimates.
+- **Utility Monitoring:** Track electricity token usage and Fuliza loan deadlines.
+- **Multi-language:** English and Swahili support.
+- **Tiered Access:**
+  - Free: Manual tracking
+  - Core: Proactive alerts, utility tracking (KES 149/mo)
+  - Pro: AI-powered tips, anomaly detection (KES 399/mo)
+  - 7-day free trial for all new users
 
-## �️ Architecture & Knowledge Base
+## How It Works
 
-Mazao AI follows **FAANG/Enterprise-grade** documentation standards. All technical and strategic artifacts are consolidated in the `/docs` directory.
+1. **Start the Bot:**
+    - Run python apps/tg_bot/bot.py after setting up your environment variables (see .env.example).
+2. **Register:**
+    - Onboard via Telegram, set your business details, and connect your M-Pesa till or upload statements.
+3. **Automate:**
+    - Receive daily reports, tax reminders, and actionable insights directly in Telegram.
 
-### 📚 Documentation Map
-- **[Future: Multi-Number Wallets](docs/architecture/MULTI_NUMBER_WALLET_PROFILES.md)**: Design for supporting multiple phone numbers (wallets) per tenant.
-- **[Strategy & Roadmap](docs/strategy/ROADMAP.md)**: Product vision, growth milestones, and first-customer outreach guide.
-- **[Architecture](docs/architecture/LLM_FACTORY.md)**: Technical design of the Multi-LLM factory, fallback logic, and data flow.
-- **[Governance & Protocols](docs/governance/PROTOCOL.json)**: Engineering rules, security protocols, and Phase-Gate requirements.
-- **[Audit Remediation Freeze](docs/governance/SYSTEM_AUDIT_REMEDIATION_FREEZE.md)**: Mandatory freeze on Phase 20 architectural remediation until T9H live payment validation is complete.
-- **[Legal & Compliance](docs/legal/PRIVACY_POLICY.md)**: Data protection (ODPC), privacy disclosures, and KRA/ODPC compliance.
-- **[Engineering Contract](docs/governance/CONTRACT.md)**: Service Level Agreements (SLA) and development standards.
-- [x] **Regression & Certification**: System-wide protection tiers, deploy gates, and Tier A flow invariants.
-- [x] **Regression & Certification**: System-wide protection tiers, deploy gates, and Tier A flow invariants.
-- **[Subscription Policy](docs/strategy/SUBSCRIPTION_POLICY.md)**: Tiered access gating:
-    - **Free**: KES 0/mo (Manual tracking only)
-    - **Core**: KES 149/mo (Proactive alerts + Utility tracking)
-    - **Pro**: KES 399/mo (AI Financial Tips + Anomaly Detection)
-    - **Trial**: 7 Days Full PRO access for new users
+## Recent Developments
 
----
-| `/till` | Register M-Pesa Till | Business | Any |
-| `/vat` | VAT liability check | Business | Any |
-| `/kra` | KRA obligation check | Business | Any |
-| `/statement` | View parsed statement | Business | Any |
-| `/tokens` | Log electricity units | Individual | Any |
-| `/fuliza` | Log Fuliza balance | Individual | Any |
-| `/subscribe` | Add bill reminder | Individual | Any |
-| `/subscriptions` | Manage recurring payments | Individual | Any |
-| `/upgrade` | Upgrade to paid plan | Any | Free |
-| `/refer` | Refer a friend & get discount | Any | Any |
-| `/settings` | Edit your profile | Any | Any |
-| `/language` | Change language (EN/SW) | Any | Any |
-| `/privacy` | Read Privacy Policy | Any | Any |
-| `/feedback` | Send feedback/report issue | Any | Any |
-| `/stop` | Pause daily alerts | Any | Any |
-| `/resume` | Resume daily alerts | Any | Any |
-| `/admin` | Admin Dashboard | Admin | N/A |
+- Improved M-Pesa parsing and categorization (supports more statement formats)
+- Enhanced AI fallback logic for financial tips (Anthropic, OpenRouter)
+- Streamlined onboarding and trial management
+- Expanded utility tracking (electricity, Fuliza)
+- More robust Supabase integration for data reliability
+- Native Daraja C2B integration (production-ready, pending Paybill approval)
 
-## � Future Architecture: Multi-Number Wallets (Phase 20+)
+## Documentation
 
-Mazao AI is evolving to support users with multiple Safaricom identities (e.g., Personal Number + M-PESA Till/Paybill).
+All technical, legal, and strategic documentation is in the docs/ directory:
+- Architecture: docs/architecture/LLM_FACTORY.md
+- Roadmap: docs/strategy/ROADMAP.md
+- Protocols & Compliance: docs/governance/PROTOCOL.json, docs/legal/PRIVACY_POLICY.md
 
-- **Concept**: One Tenant → Multiple Wallet Profiles (Phone Numbers).
-- **Partitioning**: All financial data (Statements, Fuliza, Utilities) will be explicitly linked to a `wallet_id`.
-- **UX**: New `/wallets` command to list, switch, and manage profiles without re-onboarding.
-- **Status**: Research and Design (Phase 20 Roadmap). See **[Architecture: Multi-Number Wallets](docs/architecture/MULTI_NUMBER_WALLET_PROFILES.md)** for the full spec.
+## Production Setup (Fly.io)
 
----
+1. **Environment**: Clone .env.example to .env and fill in:
+   - TELEGRAM_BOT_TOKEN
+   - SUPABASE_URL / SUPABASE_SERVICE_KEY
+   - ANTHROPIC_API_KEY (or OPENROUTER_API_KEY)
+   - FLY_APP_URL
+   - Payment provider keys (Intasend, Daraja - optional)
 
-## �📡 Utility Alert Lifecycle
+2. **Database**: Run pps/tg_bot/schema.sql in Supabase SQL Editor.
 
-Mazao AI implements a unified, stateful alerting system for Electricity (Tokens) and Gas depletion to prevent notification fatigue while ensuring critical urgency.
+3. **Deploy**: ly deploy (Port 8080 for webhooks).
 
-| Utility | Thresholds | Lifecycle | Dedup Logic |
-|---------|------------|-----------|-------------|
-| **Electricity** | 7d, 3d, 1d | Proactive | 7d/3d: Once per refill; 1d: Daily repeat |
-| **Gas** | 7d, 3d, 1d | Proactive | 7d/3d: Once per refill; 1d: Daily repeat |
+## Local Development
 
-**Rules of Engagement:**
-1.  **Confidence Gating**: Proactive alerts are suppressed if confidence is "Grid baseline" (0-1 history entries) to avoid low-accuracy noise.
-2.  **Durable State**: 7-day and 3-day alerts are recorded in the database and will not refire until a new refill row is detected.
-3.  **Critical Urgency**: 1-day alerts bypass deduplication and fire daily until a refill is logged.
-4.  **Universal Stop-Gate**: All automated alerts (Utilities, Fuliza, Subscriptions) strictly respect the user `/stop` command. Paused or lapsed accounts receive zero scheduled messages.
-5.  **Automated Tier Lifecycle**: M-Pesa payments of KES 149 and 399 automatically activate **Core** and **Pro** tiers for 30 days. Expired subscriptions are automatically downgraded to the **Free** tier.
-
-### 💳 Fuliza Intelligence Output
-
-When a user logs a Fuliza entry via `/fuliza`, the bot returns a rich intelligence response:
-
-- **Full View**: Code, Borrowed Amount, Access Fee, Total Deducted, Outstanding Balance, Due Date, Days Left
-- **Quick View**: One-line summary (e.g., `KES 193.49 due 24 May (30d)`)
-- **Risk View**: Deterministic label based on days remaining:
-
-| Risk | Condition |
-|------|-----------|
-| 🟢 LOW | > 14 days |
-| 🟡 MEDIUM | 7–14 days |
-| 🟠 HIGH | < 7 days |
-| 🔴 OVERDUE | ≤ 0 days |
-
-- **Daily Cost View**: `access_fee / days_left` when fee data is available
-
-### 📊 Fuliza Intelligence Dashboard (P17-T5H)
-
-Mazao AI transforms raw Fuliza interactions into a professional credit management dashboard.
-
-- **Dashboard-First View**: Triggering `/fuliza` immediately displays your current status, including outstanding balance, due date, time left, and a history of the last 3 entries with visual risk markers.
-- **Multi-Entry Sessions**: Log multiple Fuliza records in a single session without state interruptions. Simply paste one SMS after another.
-- **Duplicate Protection**: The system automatically detects and blocks duplicate entries by code, surface-mounting the existing record details using the canonical T5G intelligence format.
-- **Session Closure**: Use `/done`, `/cancel`, or `/menu` to finalize your logging session and receive a completion summary.
-- **Pro-Tier Intelligence (P17-T5I)**: Advanced analytics including **Monthly Fee Burden** (total spent on Fuliza fees this month), **30-Day Frequency** (usage velocity), and **Repayment Nudges**. Access is restricted to Pro users.
-
-### 📅 Backfill & Historical Learning
-
-Mazao AI supports backfilling historical utility data (past token purchases or gas refills) to accelerate model learning without destabilizing current predictions.
-
-- **Chronological Stability**: The system automatically re-sorts historical entries by date, allowing users to add data out of order.
-- **Recency Weighting**: Newer intervals carry significantly more weight than older ones. Current forecasts are always anchored to the user's most recent behavior.
-- **Improved Confidence**: Adding historical data increases the sample size (`n`), allowing the system to graduate from "Grid baseline" to high-accuracy "Personal Average" faster.
-- **Alert Anchoring**: Proactive alerts are always calculated relative to the most recent entry in time. Backfilled data improves the *rate* but does not trigger "phantom" historical reminders.
-
----
-
-## 📡 M-Pesa Daraja C2B Integration (Sprint 5)
- 
-Mazao AI now supports native Safaricom Daraja C2B integration for real-time transaction monitoring.
- 
-### Current State: **PRODUCTION READY**
-- **OAuth2 Token Manager**: Implemented with production-grade caching and secure token handling.
-- **C2B RegisterURL**: Fully aligned and functional; registers production routes `/mpesa/c2b/validation` and `/mpesa/c2b/confirmation`.
-- **Native STK Push**: Implemented via *Lipa Na M-Pesa Online* API with automatic phone formatting (`2547XXXXXXXX`).
-- **Payment UX**: Professional guidance flow with pre-STK instructions and pending state feedback.
-- **Reconciliation**: Automated mapping of Safaricom payloads to business/subscription plans with idempotency guards.
-- **Activation Status**: **Pending `DARAJA_PASSKEY`** to go live.
-
-### Production Migration Requirements
-Once the official Safaricom Paybill/Till is approved:
-1.  **Update Secrets**: 
-    - `DARAJA_CONSUMER_KEY` & `DARAJA_CONSUMER_SECRET` (Production versions)
-    - `DARAJA_SHORTCODE` (Your Paybill number)
-    - `DARAJA_ENV` set to `production`
-2.  **Rerun Registration**: The bot will automatically attempt to register the URLs on the next startup.
-
-## 📦 Production Setup (Fly.io)
-
-1.  **Environment**: Clone `.env.example` to `.env` and fill in:
-    *   `TELEGRAM_BOT_TOKEN`
-    *   `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`
-    *   `ANTHROPIC_API_KEY`
-    *   `FLY_APP_URL` (Required for Webhooks)
-    *   `INTASEND_PUBLISHABLE_KEY` / `INTASEND_SECRET_KEY` / `INTASEND_WEBHOOK_CHALLENGE`
-2.  **Database**: Run the contents of `apps/tg_bot/schema.sql` in the Supabase SQL Editor.
-3.  **Deploy**: `fly deploy` (Port 8080 exposed for health checks & webhooks).
-
-## 🛡️ Production Readiness (Phase 10 Checklist)
-
-- [x] **Environment Variables**: All 11 confirmed set in Fly.io (including `INTASEND_*`, `FLY_APP_URL`, and `ADMIN_TELEGRAM_ID`).
-- [x] **Stability**: Command handlers hardened for edge cases (non-numeric units, pre-onboarding checks).
-- [x] **Feedback Loop**: Deliverable via `/feedback` command; auto-forwards to Chief Engineer.
-- [x] **Organic Growth**: Referral program active via `/refer` (20% discount reward).
-- [x] **Admin Visibility**: Daily digest at 8:00 AM EAT and invisible `/admin` dashboard.
-- [x] **Command Menu**: Progressive disclosure implemented via `apps/tg_bot/menu.py`.
-- [x] **Daraja Bridge**: Native C2B integration (Sandbox Verified).
-- [ ] **ODPC Registration**: [ACTION REQUIRED] Data Controller registration pending.
-- [ ] **Safaricom Paybill**: [ACTION REQUIRED] Application for production paybill pending.
-- [ ] **Privacy Policy URL**: [ACTION REQUIRED] Hosted URL pending (currently bot-only).
-
-## 🚀 Activation & Onboarding
-
-### First Customer Acquisition Guide
-**What to say to a business owner:**
-> "Hey [Name], I'm testing a new tool called Mazao AI that automates your M-Pesa bookkeeping and tax estimates. It's built for Kenyan SMEs. You just forward your statements or register your Till, and it handles the rest. Want to try it? I can set you up as a Founding Member (KES 149/mo Core or KES 399/mo Pro)."
-
-**The Demo:**
-1. Open [@MazaoAIBot](https://t.me/MazaoAIBot).
-2. Type `/start` and select "Business Owner".
-3. Forward a recent M-Pesa statement SMS.
-4. Type `/report` to see the AI analysis.
-5. Register a Till via `/till` to see real-time alerts.
-
-## ⚠️ Known Limitations (April 2026)
-- **Daraja Approval**: Real-time feed via direct Daraja integration is PRODUCTION CERTIFIED. Activation pending `DARAJA_PASSKEY` config.
-- **Statement Parsing**: Supports standard M-Pesa business and individual statement formats. Custom bank formats pending.
-- **Payments**: STK Push is PRODUCTION READY.
-
----
-
-## 💻 Local Development
-
-```bash
-# 1. Install dependencies
+\\\ash
+# Install dependencies
 pip install -r requirements.txt
 
-# 2. Run the bot
-python -m apps.tg_bot.bot
-```
+# Set up environment
+cp .env.example .env
+# Fill in your credentials
 
-## 🛡️ Architecture
-*   **Agent**: Anthropic Claude-3.5-Sonnet (via standard pipeline).
-*   **Database**: Supabase (PostgreSQL with RLS).
-*   **Payments**: Provider-agnostic bridge (Africa's Talking -> Daraja ready).
-*   **Deployment**: Fly.io (Containerized, auto-health checks).
+# Run the bot
+python apps/tg_bot/bot.py
+\\\
+
+## Project Structure
+
+\\\
+apps/
+├── agent/          # AI pipeline (LangGraph, LLM selection, state)
+├── payments/       # Payment provider integrations (Daraja, Intasend)
+└── tg_bot/         # Telegram bot logic (handlers, scheduler, database)
+docs/               # Technical, legal, strategy documentation
+tools/              # Utilities and helpers
+\\\
+
+## System Status
+
+- **Current Phase**: Phase 19 Daraja Production Readiness Complete
+- **Status**: Stable & Certified (All 38 smoke tests passing)
+- **Next Step**: Await DARAJA_PASSKEY for Phase 19E Live Activation
+
+## Contributing
+
+Contributions are welcome. Please see the roadmap and open issues for areas to help.
 
 ---
 
-## 🛡️ System Certification: **STABLE**
-**Current State**: Phase 19 Daraja Production Readiness Complete.
-**Directive**: Awaiting `DARAJA_PASSKEY` for Phase 19E Live Activation.
-**Runbook**: [Daraja STK Activation Runbook](docs/runbooks/DARAJA_STK_ACTIVATION_RUNBOOK.md)
-**Stability**: Certified Sovereign-Grade. All 38 smoke tests passing.
+## License
+
+MIT
+
+## Authors & Maintainers
+
+**Developed and maintained by:** Peter O. Oluoch — Backend Engineer & AI Architect/Engineer
+
+## Support
+
+For issues, feature requests, or feedback, please use the /feedback command in the bot or open an issue on GitHub.
