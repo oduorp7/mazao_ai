@@ -1043,26 +1043,32 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         log.info("report_requested", telegram_id=tid, tenant_id=tenant["id"])
 
-        # CQRS READ PATH (P20-FIX_03)
+        # CQRS READ-HEAL PATH (P20-FIX_05)
         report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
         
-        if not report:
-            # State 3: No report at all
-            await _reply(update, "📭 *No Analysis Yet*\nI haven't processed your transactions yet. Please send your M-Pesa statement CSV to get started.")
+        # Determine Narrative Presence
+        has_narrative = bool(report and report.get("summary", {}).get("ai_narrative"))
+        
+        if report and has_narrative:
+            # STATE 3: CACHE HIT (Full AI Narrative)
+            summary = report.get("summary", {})
+            narrative = summary.get("ai_narrative")
+            created_at = report.get("created_at", datetime.now(timezone.utc).isoformat())
+            # Normalize ISO string for strftime compatibility
+            report_date = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d %b %Y")
+            footer = f"\n\n_Analysis from {report_date}. Upload /statement for new month analysis._"
+            await _reply(update, narrative + footer)
             return
 
-        summary = report.get("summary", {})
-        narrative = summary.get("ai_narrative")
-        created_at = report.get("created_at", datetime.now(timezone.utc).isoformat())
-        report_date = datetime.fromisoformat(created_at).strftime("%d %b %Y")
+        # STATE 2: AUTO-HEAL (Parsed data exists but no narrative)
+        latest_stmt = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
+        if latest_stmt or (report and not has_narrative):
+            await _reply(update, "🔄 *Generating your business report...*\nI found your parsed statement data. Please wait while I analyze it.")
+            context.application.create_task(_run_pipeline_and_reply(update, context, tenant))
+            return
 
-        if narrative:
-            # State 1: Full AI Narrative
-            footer = f"\n\n_Analysis from {report_date}. Send /statement to update with fresh transactions._"
-            await _reply(update, narrative + footer)
-        else:
-            # State 2: Statement Summary only (Degraded)
-            await _reply(update, f"📊 *Statement Summary Received*\nYour statement from {report_date} was parsed, but a full AI analysis is pending.\n\nSend /statement to generate your full report.")
+        # STATE 1: MISSING DATA
+        await _reply(update, "📭 *No Statement Yet*\nUpload your M-Pesa CSV via /statement to get started.")
 
     except Exception as exc:
         log.exception("cmd_report_failed", telegram_id=_tg_id(update), error=str(exc))
@@ -1429,6 +1435,30 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 vat_estimate=vat_estimate
             )
         )
+
+        # P20-FIX_05: Persist parsed transactions to live_transactions for auto-healing support
+        try:
+            insert_batch = []
+            for t in txs:
+                insert_batch.append({
+                    "tenant_id": str(tenant["id"]),
+                    "trans_id": t.mpesa_ref,
+                    "trans_time": t.timestamp.isoformat(),
+                    "amount": float(t.amount),
+                    "msisdn": t.phone or "",
+                    "first_name": t.name or "Guest",
+                    "bill_ref": t.shortcode or "",
+                    "provider": "csv_upload"
+                })
+            
+            # Use upsert with trans_id conflict resolution to prevent duplicate key errors on re-upload
+            if insert_batch:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    lambda: db.get_client().table("live_transactions").upsert(insert_batch, on_conflict="trans_id").execute()
+                )
+        except Exception as e:
+            log.warning("csv_persistence_failed", tenant_id=tenant["id"], error=str(e))
 
         await _reply(update, M.STATEMENT_PARSE_SUCCESS.format(count=len(txs)))
         
