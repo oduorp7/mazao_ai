@@ -214,11 +214,6 @@ Respond with a JSON array, one object per transaction, in input order:
 Return ONLY the JSON array. No markdown, no explanation."""
 
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=True,
-)
 def _call_llm_categorize(transactions: list[dict]) -> list[dict]:
     """Uses the unified LLM factory for categorization."""
     llm = get_llm()
@@ -693,17 +688,17 @@ def generate_report(state: AgentState) -> dict:
             ai_degraded = True
             
             # FAANG-Grade Deterministic Fallback (P19-T9AS/T9AT Enforcement)
-            vat_line = f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.0f}\n" if v and v.net_vat_payable > 0 else ""
+            vat_line = f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.2f}\n" if v and v.net_vat_payable > 0 else ""
             next_ob = obs[0] if obs else None
             ob_line = f"⏰ *Next Deadline:* {next_ob.obligation_type.value} ({next_ob.due_date.strftime('%d %b')}) — {next_ob.days_until_due} days left\n" if next_ob else ""
-
+            
             # Capture a user-friendly failure reason
             reason = "connection issue" if "timeout" in str(llm_exc).lower() else "service busy"
             fallback_header = f"📊 *Mazao AI Business Summary*\n_AI insights unavailable ({reason}); showing computed metrics_\n\n"
             metrics_body = (
-                f"💰 *Total Income:* KES {(r.total_income if r else 0):,.0f}\n"
-                f"💸 *Total Expenses:* KES {(r.total_expenses if r else 0):,.0f}\n"
-                f"📈 *Net Profit:* KES {(r.net_profit if r else 0):,.0f}\n"
+                f"💰 *Total Income:* KES {(r.total_income if r else 0):,.2f}\n"
+                f"💸 *Total Expenses:* KES {(r.total_expenses if r else 0):,.2f}\n"
+                f"📈 *Net Profit:* KES {(r.net_profit if r else 0):,.2f}\n"
                 f"{vat_line}{ob_line}"
                 f"\n⚠️ *Alert:* {r.flagged_count if r else 0} transactions need review.\n\n"
                 f"Next Action: Use /help for filing guides while we restore AI insights."

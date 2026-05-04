@@ -418,3 +418,9 @@
 - **Conversational Layer**: Hardened & Certified.
 - **Referral System**: Hardened & Functional.
 - **Overall Status**: **PRODUCTION READY**
+- [x] FIX_03_04: Numeric Precision & Latency Optimization.
+    - Record: Enforced deterministic 2-decimal precision (`:.2f`) across all LLM prompt and fallback metrics (Income, Expenses, Profit, VAT).
+    - Record: Removed redundant `@retry` decorators from LLM-dependent nodes (`_call_llm_categorize`, `_call_llm_report`).
+    - Logic: Relied on `FallbackLLM` (Stage 1-4) for provider-level resilience, reducing total pipeline latency by eliminating multiplier-based retry delays.
+    - Result: Precise financial reporting and faster "Generating report..." UX.
+    - Scope: `apps/agent/nodes.py`. Phase 20 lock intact.
