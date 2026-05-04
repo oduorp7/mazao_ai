@@ -563,12 +563,13 @@ def compute_obligations(state: AgentState) -> dict:
 # ============================================================================
 
 REPORT_SYSTEM_PROMPT = """\
-You are a friendly business advisor for Kenyan small business owners.
+You are a Kenyan business financial advisor for small business owners.
 Write a WhatsApp business report — concise, warm, actionable.
+Use ONLY the structured data provided. Do NOT invent figures or add categories not present in the data.
+All categorisation is AI-estimated — label it clearly as *estimated* in your narrative.
 Use M-Pesa-style formatting with bold via *asterisks*.
 Keep under 400 words.
 Use Kenyan shilling (KES) notation.
-Mention specific numbers from the data.
 STRICT: Use the provided KES values exactly as written. Do not round, recompute, or approximate financial totals.
 End with ONE clear next action.
 Write in {language}."""
@@ -596,38 +597,44 @@ def _build_report_prompt(state: AgentState) -> str:
     next_ob = obs[0] if obs else None
     next_ob_str = (
         f"({next_ob.obligation_type.value} due in {next_ob.days_until_due} days, "
-        f"est. KES {next_ob.estimated_amount:,.0f})"
+        f"est. KES {next_ob.estimated_amount:,.2f})"
         if next_ob else "No immediate obligations"
     )
 
-    # T40: Replace raw transaction context with a structured financial summary.
-    # This reduces token usage while giving the LLM rich data for the narrative.
+    # REQUIRED FIX 1: Ensure only pre-aggregated summary is sent. No raw rows.
+    # We also filter out zero categories to prevent trust-damaging hallucinations (e.g. Salary: 0%).
     breakdown = r.category_breakdown if r else {}
-    breakdown_str = "\n".join([f"  - {cat}: KES {amt:,.0f}" for cat, amt in breakdown.items()])
+    active_categories = {k: v for k, v in breakdown.items() if v > 0}
+    breakdown_str = "\n".join([f"  - {cat}: KES {amt:,.2f}" for cat, amt in active_categories.items()])
     
     # Sanitize errors to prevent token bloat
     clean_errors = [e[:200] + "..." if len(e) > 200 else e for e in state.errors]
     error_summary = clean_errors[:3] if clean_errors else "None"
 
+    caveat = "Note: Transaction categorisation is AI-estimated based on payment patterns. Review flagged transactions for accuracy."
+
     return f"""
-Business report data:
+Business report summary (STRICT SCOPE):
 - Period: {state.report_period_start} to {state.report_period_end}
 - Financials:
   - Total income: KES {(r.total_income if r else 0):,.2f}
   - Total expenses: KES {(r.total_expenses if r else 0):,.2f}
   - Net profit: KES {(r.net_profit if r else 0):,.2f}
-- Categorization Breakdown:
+- Estimated Categorization Breakdown:
 {breakdown_str}
 - Metadata:
   - Total Transactions: {r.transaction_count if r else 0}
   - Flagged for review: {r.flagged_count if r else 0}
   - Top customers: {r.top_customers[:3] if r else []}
 - Compliance:
-  - VAT payable this month: KES {(v.net_vat_payable if v else 0):,.0f}
+  - VAT payable this month: KES {(v.net_vat_payable if v else 0):,.2f}
   - Most urgent KRA obligation: {next_ob_str}
-- Errors (Sanitized): {error_summary}
+- System Warnings: {error_summary}
+
+Required Caveat: {caveat}
 
 Write the WhatsApp report now. Provide a warm narrative and one clear next action.
+Label all categorisation as ESTIMATED. Use the exact financial totals above.
 """.strip()
 
 
