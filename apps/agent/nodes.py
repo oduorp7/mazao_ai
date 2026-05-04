@@ -558,7 +558,7 @@ def compute_obligations(state: AgentState) -> dict:
 # ============================================================================
 
 REPORT_SYSTEM_PROMPT = """\
-You are a Kenyan business financial advisor for small business owners.
+You are Mazao AI, a Kenyan business financial advisor for {business_name}.
 Write a WhatsApp business report — concise, warm, actionable.
 Use ONLY the structured data provided. Do NOT invent figures or add categories not present in the data.
 All categorisation is AI-estimated — label it clearly as *estimated* in your narrative.
@@ -566,22 +566,22 @@ Use M-Pesa-style formatting with bold via *asterisks*.
 Keep under 400 words.
 Use Kenyan shilling (KES) notation.
 STRICT: Use the provided KES values exactly as written. Do not round, recompute, or approximate financial totals.
-End with ONE clear next action.
+End with "Regards, Mazao AI" and ONE clear next action.
 Write in {language}."""
 
 
-def _call_llm_report(prompt: str, language: str) -> str:
+def _call_llm_report(prompt: str, language: str, business_name: str) -> str:
     """Uses the unified LLM factory for report generation."""
     llm = get_llm()
     messages = [
-        SystemMessage(content=REPORT_SYSTEM_PROMPT.format(language=language)),
+        SystemMessage(content=REPORT_SYSTEM_PROMPT.format(language=language, business_name=business_name)),
         HumanMessage(content=prompt)
     ]
     try:
         response = llm.invoke(messages)
         return response.content.strip()
     except Exception as e:
-        log.error("llm_report_error", error=str(e), language=language)
+        log.error("llm_report_error", error=str(e), language=language, business_name=business_name)
         raise
 
 def _build_report_prompt(state: AgentState) -> str:
@@ -672,11 +672,21 @@ def generate_report(state: AgentState) -> dict:
         v = state.vat_return
         obs = state.upcoming_obligations
 
+        # P20-FIX_07: Fetch business name for branding injection
+        business_name = "your business"
+        try:
+            # Note: state.tenant_id in nodes is usually the UUID string from handle_document
+            resp = db.get_client().table("tenants").select("business_name, full_name").eq("id", state.tenant_id).maybe_single().execute()
+            if resp and resp.data:
+                business_name = resp.data.get("business_name") or resp.data.get("full_name") or business_name
+        except Exception as e:
+            log.warning("tenant_metadata_fetch_failed", tenant_id=state.tenant_id, error=str(e))
+
         # 3. Inner LLM Try-Block (already hardened in T9AS)
         try:
             prompt = _build_report_prompt(state)
-            report_en = _call_llm_report(prompt, "English")
-            report_sw = _call_llm_report(prompt, "Swahili")
+            report_en = _call_llm_report(prompt, "English", business_name)
+            report_sw = _call_llm_report(prompt, "Swahili", business_name)
         except Exception as llm_exc:
             log.warning(
                 "llm_report_failed_using_template",
