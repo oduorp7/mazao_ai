@@ -70,7 +70,8 @@ from apps.tg_bot.handlers import (
     handle_callback,
     handle_document,
     handle_photo,
-    cmd_about, # P19-T9G1
+    cmd_about, 
+    cmd_refresh,
 )
 from apps.tg_bot.scheduler import (
     job_daily_reports,
@@ -199,7 +200,8 @@ async def main() -> None:
     app.add_handler(CommandHandler("subscriptions", cmd_subscriptions))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("resume", cmd_resume))
-    app.add_handler(CommandHandler("about",  cmd_about)) # P19-T9G1
+    app.add_handler(CommandHandler("about",  cmd_about)) 
+    app.add_handler(CommandHandler("refresh", cmd_refresh))
 
     # All non-command text → conversation handler
     app.add_handler(

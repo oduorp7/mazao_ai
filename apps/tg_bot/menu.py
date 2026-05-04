@@ -56,6 +56,7 @@ CMD_BUSINESS_CORE = [
     BotCommand("vat", "VAT liability check"),
     BotCommand("kra", "KRA obligation check"),
     BotCommand("statement", "View parsed statement"),
+    BotCommand("refresh", "Clear cache & regenerate"),
 ]
 
 async def update_user_menu(bot: Bot, user_id: int, tenant: dict = None) -> bool:

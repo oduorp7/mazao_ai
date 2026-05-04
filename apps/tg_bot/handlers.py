@@ -1029,20 +1029,11 @@ async def cmd_statement(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         tid = _tg_id(update)
-        # P18-T8E: Clear state on report
         await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-        # T6F-BUG-FIX: was incorrectly calling db.get_tenant synchronously, blocking
-        # the event loop. Now correctly wrapped with run_in_executor.
         tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
 
         if not tenant:
             await _reply(update, M.NOT_REGISTERED)
-            return
-
-        # P3-T2: Check if a statement has been uploaded
-        statement = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
-        if not statement:
-            await _render_report_empty_state(update)
             return
 
         # P7-T6: Feature Gating
@@ -1050,25 +1041,32 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Business Report", upgrade_link="/upgrade"))
             return
 
-        # FAANG-grade immediate feedback
-        msg = await update.message.reply_text("🔄 *Mazao AI is analyzing your transactions...*\nPlease wait a moment.")
-        
-        # P19-T21: Only block if BOTH live feed (till) and statement are missing
-        if not tenant.get("mpesa_till") and not statement:
-            await _reply(
-                update,
-                "⚙️ *M-Pesa Till Not Configured*\n\nTo see your live business reports, I need your Till or Paybill number.\n\nType /till to set it up or upload a CSV /statement."
-            )
-            return
-
-        # await _reply(update, M.REPORT_GENERATING) # T43: Removed duplicate message to clean up UX
-
         log.info("report_requested", telegram_id=tid, tenant_id=tenant["id"])
 
-        # Run pipeline in background
-        context.application.create_task(
-            _run_pipeline_and_reply(update, context, tenant)
-        )
+        # CQRS READ PATH (P20-FIX_03)
+        report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
+        
+        if not report:
+            # State 3: No report at all
+            await _reply(update, "📭 *No Analysis Yet*\nI haven't processed your transactions yet. Please send your M-Pesa statement CSV to get started.")
+            return
+
+        summary = report.get("summary", {})
+        narrative = summary.get("ai_narrative")
+        created_at = report.get("created_at", datetime.now(timezone.utc).isoformat())
+        report_date = datetime.fromisoformat(created_at).strftime("%d %b %Y")
+
+        if narrative:
+            # State 1: Full AI Narrative
+            footer = f"\n\n_Analysis from {report_date}. Send /statement to update with fresh transactions._"
+            await _reply(update, narrative + footer)
+        else:
+            # State 2: Statement Summary only (Degraded)
+            await _reply(update, f"📊 *Statement Summary Received*\nYour statement from {report_date} was parsed, but a full AI analysis is pending.\n\nSend /statement to generate your full report.")
+
+    except Exception as exc:
+        log.exception("cmd_report_failed", telegram_id=_tg_id(update), error=str(exc))
+        await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error preparing your report. Please try again.")
     except Exception as exc:
         log.exception("cmd_report_failed", telegram_id=_tg_id(update), error=str(exc))
         await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error preparing your report. Please try again.")
@@ -1434,6 +1432,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         await _reply(update, M.STATEMENT_PARSE_SUCCESS.format(count=len(txs)))
         
+        # CQRS WRITE GUARD: Check for existing report for this period (P20-FIX_03)
+        existing = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_report_by_period(str(tenant["id"]), period))
+        if existing and existing.get("summary", {}).get("ai_narrative"):
+             await _reply(update, f"✅ *Report Already Exists*\nYou already have a {period} report. Use /report to view it or /refresh to regenerate.")
+             return
+        
         # Run pipeline with extracted transactions
         context.application.create_task(
             _run_pipeline_and_reply(
@@ -1448,6 +1452,25 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as exc:
         log.exception("document_parsing_failed", telegram_id=tid, error=str(exc))
         await _reply(update, M.STATEMENT_PARSE_FAILED)
+
+
+async def cmd_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """CQRS CACHE CLEAR: Deletes the latest report to allow regeneration (P20-FIX_03)."""
+    tid = _tg_id(update)
+    tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+    if not tenant:
+        await _reply(update, M.NOT_REGISTERED)
+        return
+    
+    # Delete latest report row
+    latest = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
+    if latest:
+        await asyncio.get_event_loop().run_in_executor(
+            None, 
+            lambda: db.get_client().table("reports").delete().eq("id", latest["id"]).execute()
+        )
+    
+    await _reply(update, "♻️ *Cache Cleared*\nRegenerating your report. Please upload your /statement to proceed.")
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
