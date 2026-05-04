@@ -53,6 +53,10 @@ log = get_logger(__name__)
 # Maps tenant_id -> list of timestamps of recent /upgrade attempts
 upgrade_rate_limit = {}
 
+# P20-FIX_06: In-memory pipeline mutex to prevent race conditions during report generation
+# Maps tenant_id (str) -> bool
+_pipeline_locks: dict[str, bool] = {}
+
 # ── Constants ─────────────────────────────────────────────────────────────
 
 HOUSEHOLD_TYPE_LABELS = {
@@ -1063,6 +1067,11 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # STATE 2: AUTO-HEAL (Parsed data exists but no narrative)
         latest_stmt = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
         if latest_stmt or (report and not has_narrative):
+            # T36: Mutex Check — prevent parallel analysis if one is already running
+            if _pipeline_locks.get(str(tenant["id"])):
+                await _reply(update, "🔄 *Analysis in Progress*\nI'm already working on your report. It will be ready in a few moments.")
+                return
+
             await _reply(update, "🔄 *Generating your business report...*\nI found your parsed statement data. Please wait while I analyze it.")
             context.application.create_task(_run_pipeline_and_reply(update, context, tenant))
             return
@@ -1576,6 +1585,14 @@ async def _run_pipeline_and_reply(
     Executes in background — never blocks the handler.
     """
     tid = tenant["telegram_id"]
+    tenant_uuid = str(tenant["id"])
+
+    # P20-FIX_06: Mutex Lock Entrance
+    if _pipeline_locks.get(tenant_uuid):
+        log.info("pipeline_lock_active_ignoring", tenant_id=tenant_uuid)
+        return
+    
+    _pipeline_locks[tenant_uuid] = True
 
     try:
         from apps.agent.pipeline import run_pipeline
@@ -1811,6 +1828,10 @@ async def _run_pipeline_and_reply(
             text=M.PIPELINE_ERROR,
             parse_mode=ParseMode.MARKDOWN,
         )
+    finally:
+        # P20-FIX_06: Mutex Lock Release
+        _pipeline_locks.pop(tenant_uuid, None)
+        log.info("pipeline_lock_released", tenant_id=tenant_uuid)
 
 
 # ── /vat ──────────────────────────────────────────────────────────────────────
