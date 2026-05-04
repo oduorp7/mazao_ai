@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import time
 import json
+import httpx
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -214,10 +215,9 @@ Return ONLY the JSON array. No markdown, no explanation."""
 
 
 @retry(
-    stop=stop_after_attempt(3),
+    stop=stop_after_attempt(2),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(Exception),
-    reraise=False,
+    reraise=True,
 )
 def _call_llm_categorize(transactions: list[dict]) -> list[dict]:
     """Uses the unified LLM factory for categorization."""
@@ -275,30 +275,31 @@ def categorize_transactions(state: AgentState) -> dict:
         llm_results: list[dict] = []
         used_fallback = False
 
-        try:
-            llm_results = _call_llm_categorize(tx_dicts)
-            log.info(
-                "llm_categorization_complete",
-                node=node_name,
-                tenant_id=state.tenant_id,
-                result_count=len(llm_results),
-            )
-        except Exception as exc:
-            used_fallback = True
-            retry_count = 3
-            log.warning(
-                "llm_categorization_failed_using_fallback",
-                node=node_name,
-                tenant_id=state.tenant_id,
-                error=str(exc),
-            )
-            # Build a lookup by mpesa_ref for fallback
-            llm_results = [
-                {"mpesa_ref": t["mpesa_ref"], **_rule_based_categorize(
-                    state.raw_transactions[i]
-                )}
-                for i, t in enumerate(tx_dicts)
-            ]
+        # T40: Implement chunked categorization to prevent OpenRouter 402/token-limit errors.
+        # 50 transactions per chunk is a safe balance of speed and token usage.
+        chunk_size = 50
+        for i in range(0, len(tx_dicts), chunk_size):
+            chunk = tx_dicts[i : i + chunk_size]
+            try:
+                res = _call_llm_categorize(chunk)
+                llm_results.extend(res)
+            except Exception as exc:
+                used_fallback = True
+                log.warning(
+                    "llm_categorization_chunk_failed",
+                    node=node_name,
+                    tenant_id=state.tenant_id,
+                    chunk_index=i // chunk_size,
+                    error=str(exc),
+                )
+                # Fallback only for this chunk
+                for t in chunk:
+                    # Find original tx object for rule-based
+                    orig_tx = next(tx for tx in state.raw_transactions if tx.mpesa_ref == t["mpesa_ref"])
+                    llm_results.append({
+                        "mpesa_ref": t["mpesa_ref"],
+                        **_rule_based_categorize(orig_tx)
+                    })
 
         # Build lookup keyed by mpesa_ref
         result_map = {r["mpesa_ref"]: r for r in llm_results}
@@ -348,6 +349,7 @@ def categorize_transactions(state: AgentState) -> dict:
         log.exception("node_error", node=node_name, tenant_id=state.tenant_id)
         return {
             "errors": [msg],
+            "pipeline_failed": True,
             "node_results": [
                 _record(node_name, NodeStatus.FAILED, start, error=str(exc))
             ],
@@ -438,6 +440,7 @@ def reconcile(state: AgentState) -> dict:
         log.exception("node_error", node=node_name, tenant_id=state.tenant_id)
         return {
             "errors": [msg],
+            "pipeline_failed": True,
             "node_results": [
                 _record(node_name, NodeStatus.FAILED, start, error=str(exc))
             ],
@@ -469,8 +472,6 @@ def compute_obligations(state: AgentState) -> dict:
         today = datetime.utcnow()
 
         # ── VAT estimate (P3-T3) ──────────────────────────────────────────
-        # Requirement: 16% of total inflows for business tenants only.
-        
         tenant = db.get_tenant(state.tenant_id) if isinstance(state.tenant_id, int) else None
         # Note: tenant_id in state might be the UUID string or Telegram ID. 
         # The db.get_tenant takes Telegram ID.
@@ -568,16 +569,11 @@ Use M-Pesa-style formatting with bold via *asterisks*.
 Keep under 400 words.
 Use Kenyan shilling (KES) notation.
 Mention specific numbers from the data.
+STRICT: Use the provided KES values exactly as written. Do not round, recompute, or approximate financial totals.
 End with ONE clear next action.
 Write in {language}."""
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(Exception),
-    reraise=False,
-)
 def _call_llm_report(prompt: str, language: str) -> str:
     """Uses the unified LLM factory for report generation."""
     llm = get_llm()
@@ -604,20 +600,34 @@ def _build_report_prompt(state: AgentState) -> str:
         if next_ob else "No immediate obligations"
     )
 
+    # T40: Replace raw transaction context with a structured financial summary.
+    # This reduces token usage while giving the LLM rich data for the narrative.
+    breakdown = r.category_breakdown if r else {}
+    breakdown_str = "\n".join([f"  - {cat}: KES {amt:,.0f}" for cat, amt in breakdown.items()])
+    
+    # Sanitize errors to prevent token bloat
+    clean_errors = [e[:200] + "..." if len(e) > 200 else e for e in state.errors]
+    error_summary = clean_errors[:3] if clean_errors else "None"
+
     return f"""
 Business report data:
 - Period: {state.report_period_start} to {state.report_period_end}
-- Total income: KES {(r.total_income if r else 0):,.0f}
-- Total expenses: KES {(r.total_expenses if r else 0):,.0f}
-- Net profit: KES {(r.net_profit if r else 0):,.0f}
-- Transactions: {r.transaction_count if r else 0}
-- Flagged for review: {r.flagged_count if r else 0}
-- Top customers: {r.top_customers[:3] if r else []}
-- VAT payable this month: KES {(v.net_vat_payable if v else 0):,.0f}
-- Most urgent KRA obligation: {next_ob_str}
-- Errors during processing: {state.errors}
+- Financials:
+  - Total income: KES {(r.total_income if r else 0):,.2f}
+  - Total expenses: KES {(r.total_expenses if r else 0):,.2f}
+  - Net profit: KES {(r.net_profit if r else 0):,.2f}
+- Categorization Breakdown:
+{breakdown_str}
+- Metadata:
+  - Total Transactions: {r.transaction_count if r else 0}
+  - Flagged for review: {r.flagged_count if r else 0}
+  - Top customers: {r.top_customers[:3] if r else []}
+- Compliance:
+  - VAT payable this month: KES {(v.net_vat_payable if v else 0):,.0f}
+  - Most urgent KRA obligation: {next_ob_str}
+- Errors (Sanitized): {error_summary}
 
-Write the WhatsApp report now.
+Write the WhatsApp report now. Provide a warm narrative and one clear next action.
 """.strip()
 
 
@@ -643,6 +653,16 @@ def generate_report(state: AgentState) -> dict:
     # 1. Outer Guard: Initialize critical return keys
     report_en: str = ""
     report_sw: str = ""
+    ai_degraded: bool = False
+
+    # T36: Gate — refuse to generate a report on a failed pipeline.
+    if state.pipeline_failed:
+        msg = f"{node_name} skipped: pipeline_failed is True (upstream node failure)"
+        log.warning("node_skipped_pipeline_failed", node=node_name, tenant_id=state.tenant_id, errors=state.errors)
+        return {
+            "errors": [msg],
+            "node_results": [_record(node_name, NodeStatus.FAILED, start, error=msg)],
+        }
 
     try:
         # 2. Extract Data
@@ -662,13 +682,17 @@ def generate_report(state: AgentState) -> dict:
                 tenant_id=state.tenant_id,
                 error=str(llm_exc),
             )
+            # T36: Mark AI specifically as degraded while preserving financial success
+            ai_degraded = True
             
             # FAANG-Grade Deterministic Fallback (P19-T9AS/T9AT Enforcement)
             vat_line = f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.0f}\n" if v and v.net_vat_payable > 0 else ""
             next_ob = obs[0] if obs else None
             ob_line = f"⏰ *Next Deadline:* {next_ob.obligation_type.value} ({next_ob.due_date.strftime('%d %b')}) — {next_ob.days_until_due} days left\n" if next_ob else ""
 
-            fallback_header = "📊 *Mazao AI Business Summary*\n_AI insights currently unavailable; showing computed metrics_\n\n"
+            # Capture a user-friendly failure reason
+            reason = "connection issue" if "timeout" in str(llm_exc).lower() else "service busy"
+            fallback_header = f"📊 *Mazao AI Business Summary*\n_AI insights unavailable ({reason}); showing computed metrics_\n\n"
             metrics_body = (
                 f"💰 *Total Income:* KES {(r.total_income if r else 0):,.0f}\n"
                 f"💸 *Total Expenses:* KES {(r.total_expenses if r else 0):,.0f}\n"
@@ -690,11 +714,13 @@ def generate_report(state: AgentState) -> dict:
             tenant_id=state.tenant_id,
             en_length=len(report_en),
             sw_length=len(report_sw),
+            ai_degraded=ai_degraded,
         )
 
         return {
             "report_text_en": report_en,
             "report_text_sw": report_sw or report_en,
+            "ai_degraded": ai_degraded,
             "node_results": [_record(node_name, NodeStatus.SUCCESS, start)],
         }
 
@@ -797,3 +823,51 @@ def send_whatsapp(state: AgentState) -> dict:
                 _record(node_name, NodeStatus.FAILED, start, error=str(exc))
             ],
         }
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────
+
+def _rule_based_categorize(tx: RawTransaction) -> dict:
+    """Deterministic fallback categorization for M-Pesa transactions."""
+    name = tx.name.upper()
+    bill_ref = (tx.bill_ref or "").upper()
+    amount = tx.amount
+    tx_type = tx.transaction_type
+    
+    # Defaults
+    category = TransactionCategory.UNKNOWN
+    confidence = 0.5
+    needs_review = amount > 50000
+    reasoning = "Rule-based fallback"
+
+    # Rule 1: TAX
+    tax_keywords = ["KRA", "ITAX", "NSSF", "NHIF", "PAYE", "WHT", "VAT"]
+    if any(k in name for k in tax_keywords) or any(k in bill_ref for k in tax_keywords):
+        category = TransactionCategory.TAX
+        confidence = 0.9
+        reasoning = "Matched statutory keyword (KRA/iTax/NSSF/NHIF)"
+
+    # Rule 2: SALES (Income)
+    elif tx_type == TransactionType.C2B:
+        category = TransactionCategory.SALES
+        confidence = 0.8
+        reasoning = "C2B income (Customer to Business)"
+
+    # Rule 3: SALARY
+    elif "SALARY" in name or "WAGES" in name:
+        category = TransactionCategory.SALARY
+        confidence = 0.9
+        reasoning = "Matched keyword 'Salary/Wages'"
+
+    # Rule 4: SUPPLIER
+    elif tx_type == TransactionType.B2C:
+        category = TransactionCategory.SUPPLIER
+        confidence = 0.6
+        reasoning = "B2C payout (likely Supplier)"
+
+    return {
+        "category": category,
+        "confidence": confidence,
+        "needs_review": needs_review,
+        "reasoning": reasoning
+    }

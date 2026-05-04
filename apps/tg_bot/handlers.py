@@ -39,6 +39,7 @@ from telegram.constants import ParseMode
 import apps.tg_bot.db as db
 import apps.tg_bot.messages as M
 from apps.tg_bot import router
+from apps.tg_bot import mpesa_parser
 from apps.tg_bot.menu import update_user_menu
 from apps.tg_bot.trial import is_feature_allowed, start_trial, get_trial_status
 from apps.payments.stk import initiate_stk_push
@@ -81,6 +82,8 @@ NORM_PLAN_MAP = {
     'free': 'free',
     'trial': 'trial'
 }
+# ── T43: Admin & Control Constants ─────────────────────────────────────────────
+ADMIN_TELEGRAM_ID = 5833240219
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -258,6 +261,12 @@ async def _reply(update: Update, text: str, **kwargs) -> None:
 
 async def _maybe_send_nudge(update: Update, context: ContextTypes.DEFAULT_TYPE, nudge_text: str, condition: bool = True) -> None:
     """Sends a conversion nudge if conditions are met and none has been sent in this session (P17-T4J)."""
+    # T43: Upsell targeting enforcement
+    # Admin, Trial, and Paid users never see unsolicited upgrade prompts.
+    tid = update.effective_user.id
+    if tid == ADMIN_TELEGRAM_ID:
+        return
+
     if not condition:
         return
     
@@ -1044,14 +1053,15 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # FAANG-grade immediate feedback
         msg = await update.message.reply_text("🔄 *Mazao AI is analyzing your transactions...*\nPlease wait a moment.")
         
-        if not tenant.get("mpesa_till"):
+        # P19-T21: Only block if BOTH live feed (till) and statement are missing
+        if not tenant.get("mpesa_till") and not statement:
             await _reply(
                 update,
-                "⚙️ Your M-Pesa Till isn't set up yet.\n\nType /start to complete setup."
+                "⚙️ *M-Pesa Till Not Configured*\n\nTo see your live business reports, I need your Till or Paybill number.\n\nType /till to set it up or upload a CSV /statement."
             )
             return
 
-        await _reply(update, M.REPORT_GENERATING)
+        # await _reply(update, M.REPORT_GENERATING) # T43: Removed duplicate message to clean up UX
 
         log.info("report_requested", telegram_id=tid, tenant_id=tenant["id"])
 
@@ -1389,8 +1399,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         file = await context.bot.get_file(doc.file_id)
         file_bytes = await file.download_as_bytearray()
         
-        from apps.agent.mpesa_parser import parse
-        txs = parse(bytes(file_bytes), fmt)
+        txs = mpesa_parser.parse(bytes(file_bytes), fmt)
         
         if not txs:
             await _reply(update, M.STATEMENT_PARSE_FAILED)
@@ -1517,93 +1526,230 @@ async def _run_pipeline_and_reply(
 
     try:
         from apps.agent.pipeline import run_pipeline
-        from apps.agent.state import RawTransaction, TransactionType
 
-        # Use passed transactions or fall back to live transactions (P6-T6)
-        txs = custom_transactions
-        if not txs:
-            from datetime import datetime
-            now = datetime.now(timezone.utc)
-            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-            
-            live_resp = db.get_client().table("live_transactions").select("*").eq("tenant_id", str(tenant["id"])).gte("trans_time", month_start).execute()
-            if live_resp and live_resp.data:
-                from apps.agent.state import RawTransaction, TransactionType
-                txs = []
-                for lt in live_resp.data:
-                    tx_time = datetime.fromisoformat(lt["trans_time"].replace("Z", "+00:00"))
-                    txs.append(RawTransaction(
-                        mpesa_ref=lt["trans_id"],
-                        amount=float(lt["amount"]),
-                        phone=lt["msisdn"] or "",
-                        name=lt["first_name"] or "Guest",
-                        shortcode=lt["bill_ref"] or "",
-                        transaction_type=TransactionType.PAYMENT_RECEIVED,
-                        timestamp=tx_time
-                    ))
-                trigger_source = "live_feed"
+        # P19-T24: Freshness-Aware Data Routing & Dynamic Period Targeting
+        # Fetch status markers first to determine precedence and target period
+        latest_report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
+        latest_stmt = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
+
+        # T34: Normalize timestamps to timezone-aware datetime objects for deterministic comparison.
+        # Raw Supabase ISO strings may use 'Z' or '+00:00' — either could break string comparison.
+        def _parse_ts(raw: str | None) -> datetime | None:
+            if not raw:
+                return None
+            try:
+                return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
+            except (ValueError, TypeError):
+                return None
+
+        report_time: datetime | None = _parse_ts(latest_report.get("created_at") if latest_report else None)
+        stmt_time: datetime | None = _parse_ts(latest_stmt.get("parsed_at") if latest_stmt else None)
+
+        # Determine target period (P19-T27: Moved to function scope for universal access)
+        now = datetime.now(timezone.utc)
+        target_period = now.strftime("%Y-%m")
+        
+        # T32 Fix: target_period follows the most recently generated data artifact
+        if stmt_time and report_time:
+            if stmt_time > report_time:
+                target_period = latest_stmt.get("period", target_period)
             else:
-                if trigger_source == "telegram_command":
-                    await _render_report_empty_state(update)
-                else:
-                    await context.bot.send_message(
-                        chat_id=tid,
-                        text=M.REPORT_STATEMENT_REQUIRED,
-                        parse_mode=ParseMode.MARKDOWN,
-                    )
-                return
+                target_period = latest_report.get("period", target_period)
+        elif stmt_time:
+            target_period = latest_stmt.get("period", target_period)
+        elif report_time:
+            target_period = latest_report.get("period", target_period)
 
-        result = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: run_pipeline(
-                tenant_id=str(tenant["id"]),
-                raw_transactions=txs,
-                triggered_by=trigger_source,
-            ),
+        # T32: Fetch the specific report for the target period
+        period_report = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: db.get_report_by_period(str(tenant["id"]), target_period)
         )
 
-        # Language selection logic (P2-T4)
-        lang = tenant.get("preferred_language", "en")
-        report_text = result.report_text_sw if lang == "sw" else result.report_text_en
 
-        if report_text:
-            await context.bot.send_message(
-                chat_id=tid,
-                text=report_text,
-                parse_mode=ParseMode.MARKDOWN,
+        # Use passed transactions (from current upload) or fetch from DB
+        txs = custom_transactions
+        if not txs:
+            try:
+                # Convert "YYYY-MM" to ISO start of month
+                dt = datetime.strptime(target_period, "%Y-%m")
+                month_start = dt.replace(tzinfo=timezone.utc).isoformat()
+            except Exception:
+                month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+            
+            try:
+                # Query live transactions for the target period
+                live_resp = db.get_client().table("live_transactions").select("*").eq("tenant_id", str(tenant["id"])).gte("trans_time", month_start).execute()
+                if live_resp and live_resp.data:
+                    txs = []
+                    for lt in live_resp.data:
+                        tx_time = datetime.fromisoformat(lt["trans_time"].replace("Z", "+00:00"))
+                        name = lt["first_name"] or "Guest"
+                        tx_type = TransactionType.C2B
+                        
+                        # T38: Audit Fix — apply T37 classification to live_feed path
+                        tx_type = mpesa_parser.detect_internal_transfer(name, tx_type)
+                        
+                        txs.append(RawTransaction(
+                            mpesa_ref=lt["trans_id"],
+                            amount=float(lt["amount"]),
+                            phone=lt["msisdn"] or "",
+                            name=name,
+                            shortcode=lt["bill_ref"] or "",
+                            transaction_type=tx_type,
+                            timestamp=tx_time
+                        ))
+                    trigger_source = "live_feed"
+            except Exception as e:
+                # P19-T17/T18: SCHEMA DRIFT CONTRACT — DEGRADED MODE
+                log.warning("live_transactions_query_failed", error=str(e), tenant_id=tenant["id"])
+                txs = []
+
+        # P19-T21: Tiered Data Source Routing
+        # 1. If we have transactions (custom or live), run the pipeline
+        if txs:
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: run_pipeline(
+                    tenant_id=str(tenant["id"]),
+                    raw_transactions=txs,
+                    triggered_by=trigger_source,
+                ),
             )
+            # T36: Enforce pipeline execution authority — check explicit failure status.
+            if result.pipeline_failed:
+                failure_detail = "; ".join(result.errors) if result.errors else "Unknown pipeline failure"
+                log.error("pipeline_execution_failed", tenant_id=tenant["id"], errors=result.errors)
+                await context.bot.send_message(
+                    chat_id=tid,
+                    text=f"⚠️ *Report Generation Failed*\n\n_{failure_detail}_\n\nPlease re-upload your /statement to retry.",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                return
 
-            # Persist report
-            if result.reconciliation:
+            # Language selection logic (P2-T4)
+            lang = tenant.get("preferred_language", "en")
+            report_text = result.report_text_sw if lang == "sw" else result.report_text_en
+            
+            if report_text:
+                # 1. Persist report (T31/T35/T36: Authority First — Save before delivery)
                 r = result.reconciliation
+                stmt_id = latest_stmt.get("id") if latest_stmt else None
                 await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: db.save_report(
                         tenant_id=str(tenant["id"]),
-                        period=datetime.now(timezone.utc).strftime("%Y-%m"),
+                        period=target_period,
                         summary={
-                            "income": r.total_income,
-                            "expenses": r.total_expenses,
-                            "profit": r.net_profit,
-                            "flagged": r.flagged_count,
+                            "income": r.total_income if r else 0.0,
+                            "expenses": r.total_expenses if r else 0.0,
+                            "profit": r.net_profit if r else 0.0,
+                            "flagged": r.flagged_count if r else 0,
+                            "degraded": result.ai_degraded,
+                            "statement_id": stmt_id,
                         },
                     )
                 )
 
-            # P17-T4J: Report value anchor nudge (Conversion Trigger 4)
-            # Since update might be from a different interaction, we use context.user_data
-            # but we need to ensure update is available for _maybe_send_nudge
-            await _maybe_send_nudge(
-                update, context, 
-                M.NUDGE_REPORT_VALUE_ANCHOR, 
-                condition=tenant.get("plan") != "pro"
+                # 2. Attempt delivery with formatting (P19-T21-FIX: Robust Retry on Markdown Error)
+                try:
+                    await context.bot.send_message(
+                        chat_id=tid,
+                        text=report_text,
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                except Exception as send_err:
+                    log.warning("telegram_markdown_failed", error=str(send_err), tenant_id=tenant["id"])
+                    # Fallback to plain text delivery (Option A: Reliable Delivery Gate)
+                    await context.bot.send_message(
+                        chat_id=tid,
+                        text=report_text,
+                        parse_mode=None,
+                    )
+                
+                # P17-T4J: Report value anchor nudge (Conversion Trigger 4)
+                # T43: Only nudge free-tier users who have not upgraded.
+                await _maybe_send_nudge(
+                    update, context, 
+                    M.NUDGE_REPORT_VALUE_ANCHOR, 
+                    condition=tenant.get("plan") == "free"
+                )
+                return
+
+            else:
+                await context.bot.send_message(
+                    chat_id=tid,
+                    text=M.PIPELINE_ERROR,
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                return
+
+        # 2. Tiered Fallback: Statement Summary vs AI Report
+        # T32: Strict Period-Scoped Selection
+        
+        # Scenario A: Valid computed report exists for the target period
+        if period_report:
+            summary = period_report.get("summary", {})
+            period = period_report.get("period", "Current")
+            is_degraded = summary.get("degraded", False)
+
+            # T35: Lineage-based freshness authority.
+            # A report is FRESH iff its summary.statement_id matches the current latest statement.
+            # Eliminates all timestamp comparison; ID equality is deterministic and timezone-safe.
+            current_stmt_id = latest_stmt.get("id") if latest_stmt else None
+            report_stmt_id = summary.get("statement_id")
+            is_fresh: bool = bool(report_stmt_id and report_stmt_id == current_stmt_id)
+            # Legacy fallback: if report predates T35 (no statement_id), fall back to _parse_ts comparison.
+            if not report_stmt_id and not is_degraded:
+                report_created_at: datetime | None = _parse_ts(period_report.get("created_at"))
+                if report_created_at and stmt_time:
+                    is_fresh = report_created_at >= stmt_time
+                elif report_created_at and not stmt_time:
+                    is_fresh = True
+
+            if is_degraded:
+                header = f"⚠️ *Degraded AI Report ({period})*"
+                footer = "_Report generation partially failed. Upload a new /statement to retry._"
+            elif is_fresh:
+                header = f"📊 *Business Report ({period})*"
+                footer = "_Analysis is current for your latest uploaded statement._"
+            else:
+                header = f"📊 *Latest AI Report ({period})*"
+                footer = "_Showing last generated AI insights. For a fresh analysis, upload a new /statement._"
+
+            text = (
+                f"{header}\n\n"
+                f"💰 Total Income:  KES {summary.get('income', 0):,.2f}\n"
+                f"💸 Total Expenses: KES {summary.get('expenses', 0):,.2f}\n"
+                "━━━━━━━━━━━━━━━━━━━\n"
+                f"📈 *Net Profit:    KES {summary.get('profit', 0):,.2f}*\n\n"
+                f"{footer}"
             )
+            await context.bot.send_message(chat_id=tid, text=text, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        # Scenario B: No report exists for target period, but a statement summary does
+        if latest_stmt and latest_stmt.get("period") == target_period:
+            text = (
+                f"📊 *Statement Summary ({latest_stmt.get('period', 'Latest')})*\n\n"
+                f"💰 Total Inflows:  KES {float(latest_stmt.get('total_inflows') or 0):,.2f}\n"
+                f"💸 Total Outflows: KES {float(latest_stmt.get('total_outflows') or 0):,.2f}\n"
+                "━━━━━━━━━━━━━━━━━━━\n"
+                f"📈 *Net Amount:    KES {float(latest_stmt.get('net') or 0):,.2f}*\n\n"
+                "_M-Pesa live feed unavailable for this period. Upload /statement again to refresh AI insights._"
+            )
+            await context.bot.send_message(chat_id=tid, text=text, parse_mode=ParseMode.MARKDOWN)
+            return
+
+        # 4. Ultimate Fallback: Empty State (No data sources found)
+        if trigger_source == "telegram_command":
+            await _render_report_empty_state(update)
         else:
             await context.bot.send_message(
                 chat_id=tid,
-                text=M.PIPELINE_ERROR,
+                text=M.REPORT_STATEMENT_REQUIRED,
                 parse_mode=ParseMode.MARKDOWN,
             )
+        return
 
     except Exception as exc:
         log.exception("pipeline_failed", telegram_id=tid, error=str(exc))
@@ -2916,7 +3062,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             log.info("statement_upload_cancelled", telegram_id=tid)
             return
 
-        # Document upload: validate and store
+        # Document upload: validate, parse, and run pipeline
         if update.message and update.message.document:
             doc = update.message.document
             fname = (doc.file_name or "").lower()
@@ -2932,11 +3078,64 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await _reply(update, "⚠️ *File too large.*\n\nPlease send a CSV under 5MB.")
                 return
 
-            # Success — acknowledge receipt. No parsing yet (no AI brain phase).
+            # Download file bytes
+            try:
+                tg_file = await context.bot.get_file(doc.file_id)
+                raw_bytes = await tg_file.download_as_bytearray()
+            except Exception as exc:
+                log.exception("statement_download_failed", telegram_id=tid, error=str(exc))
+                await _reply(update, "❌ *Download failed.* Please try again.")
+                return
+
+            # Parse CSV statement using the centralized parser (P19-T12)
+            try:
+                parsed_txs = mpesa_parser.parse(raw_bytes, "csv")
+            except Exception as exc:
+                log.exception("statement_csv_parse_error", telegram_id=tid, error=str(exc))
+                await _reply(update, M.STATEMENT_PARSE_FAILED)
+                return
+
+            if not parsed_txs:
+                await _reply(update, M.STATEMENT_PARSE_FAILED)
+                log.warning("statement_parse_empty", telegram_id=tid, filename=doc.file_name)
+                return
+
+            # Fetch tenant for statement save
+            stmt_tenant = await _safe_db_call(lambda: db.get_tenant(tid))
+            if not stmt_tenant:
+                await _reply(update, M.NOT_REGISTERED)
+                return
+
+            # Save statement summary
+            total_in  = sum(t.amount for t in parsed_txs if t.transaction_type == TransactionType.C2B)
+            total_out = sum(t.amount for t in parsed_txs if t.transaction_type != TransactionType.C2B)
+            period    = datetime.now(timezone.utc).strftime("%Y-%m")
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.save_statement(
+                    tenant_id=str(stmt_tenant["id"]),
+                    period=period,
+                    total_inflows=total_in,
+                    total_outflows=total_out,
+                    net=round(total_in - total_out, 2),
+                    vat_estimate=round(total_in * 0.16, 2),
+                )
+            )
+
             await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-            await _reply(update, M.STATEMENT_UPLOAD_SUCCESS.format(filename=doc.file_name or "statement.csv"))
-            log.info("statement_upload_received", telegram_id=tid, filename=doc.file_name, size=doc.file_size)
+            await _reply(update, M.STATEMENT_PARSE_SUCCESS.format(count=len(parsed_txs)))
+            log.info("statement_parsed_and_saved", telegram_id=tid, tx_count=len(parsed_txs), filename=doc.file_name)
+
+            # Launch pipeline with CSV transactions as custom data
+            context.application.create_task(
+                _run_pipeline_and_reply(
+                    update, context, stmt_tenant,
+                    custom_transactions=parsed_txs,
+                    trigger_source="statement_upload",
+                )
+            )
             return
+
 
         # Text input while in upload mode: reject with guidance
         await _reply(update, M.STATEMENT_REJECT_TEXT)
