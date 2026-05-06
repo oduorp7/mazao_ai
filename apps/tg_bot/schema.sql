@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Migration v155: ALTER TABLE reports ADD COLUMN IF NOT EXISTS report_text TEXT;
+
+
 CREATE INDEX IF NOT EXISTS idx_reports_tenant_period
     ON reports(tenant_id, created_at DESC);
 

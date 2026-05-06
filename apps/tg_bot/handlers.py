@@ -1717,6 +1717,7 @@ async def _run_pipeline_and_reply(
                             "degraded": result.ai_degraded,
                             "statement_id": stmt_id,
                         },
+                        report_text=report_text,
                     )
                 )
 
@@ -1761,13 +1762,14 @@ async def _run_pipeline_and_reply(
             summary = period_report.get("summary", {})
             period = period_report.get("period", "Current")
             is_degraded = summary.get("degraded", False)
+            cached_text = period_report.get("report_text")
 
             # T35: Lineage-based freshness authority.
             # A report is FRESH iff its summary.statement_id matches the current latest statement.
-            # Eliminates all timestamp comparison; ID equality is deterministic and timezone-safe.
             current_stmt_id = latest_stmt.get("id") if latest_stmt else None
             report_stmt_id = summary.get("statement_id")
             is_fresh: bool = bool(report_stmt_id and report_stmt_id == current_stmt_id)
+            
             # Legacy fallback: if report predates T35 (no statement_id), fall back to _parse_ts comparison.
             if not report_stmt_id and not is_degraded:
                 report_created_at: datetime | None = _parse_ts(period_report.get("created_at"))
@@ -1776,6 +1778,16 @@ async def _run_pipeline_and_reply(
                 elif report_created_at and not stmt_time:
                     is_fresh = True
 
+            # FIX_08: Authority First — If narrative exists, send it immediately.
+            if cached_text and not is_degraded:
+                log.info("serving_cached_narrative", tenant_id=tenant["id"], period=period)
+                try:
+                    await context.bot.send_message(chat_id=tid, text=cached_text, parse_mode=ParseMode.MARKDOWN)
+                except Exception:
+                    await context.bot.send_message(chat_id=tid, text=cached_text, parse_mode=None)
+                return
+
+            # Fallback to Summary Card if narrative is missing or report is degraded
             if is_degraded:
                 header = f"⚠️ *Degraded AI Report ({period})*"
                 footer = "_Report generation partially failed. Upload a new /statement to retry._"

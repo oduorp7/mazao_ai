@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, List
 from apps.agent import obligations as agent_obs
 
 from supabase import create_client, Client
@@ -148,15 +148,17 @@ def clear_conv_state(telegram_id: int) -> None:
 
 # ── Reports ───────────────────────────────────────────────────────────────────
 
-def save_report(tenant_id: str, period: str, summary: dict) -> None:
+def save_report(tenant_id: str, period: str, summary: dict, report_text: str | None = None) -> None:
     get_client().table("reports").insert(
         {
             "tenant_id": tenant_id,
             "period": period,
             "summary": summary,
+            "report_text": report_text,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
     ).execute()
+
 
 
 def get_latest_report(tenant_id: str) -> Optional[dict]:
@@ -177,6 +179,21 @@ def get_latest_report(tenant_id: str) -> Optional[dict]:
     )
     return resp.data if resp else None
 
+
+def get_report_by_period(tenant_id: str, period: str) -> Optional[dict]:
+    """Retrieve the most recent report for a specific period."""
+    resp = (
+        get_client()
+        .table("reports")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .eq("period", period)
+        .order("created_at", desc=True)
+        .limit(1)
+        .maybe_single()
+        .execute()
+    )
+    return resp.data if resp else None
 
 # ── Statements (P3-T4) ────────────────────────────────────────────────────────
 
