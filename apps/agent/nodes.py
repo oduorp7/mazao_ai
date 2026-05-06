@@ -596,6 +596,10 @@ def _build_report_prompt(state: AgentState) -> str:
         if next_ob else "No immediate obligations"
     )
 
+    raw_inflows = sum(t.amount for t in state.raw_transactions if t.transaction_type == TransactionType.C2B)
+    raw_outflows = sum(t.amount for t in state.raw_transactions if t.transaction_type == TransactionType.B2C)
+    explanation = "Categorized totals may differ from raw statement totals due to classification such as refunds, transfers, or reversals."
+
     # REQUIRED FIX 1: Ensure only pre-aggregated summary is sent. No raw rows.
     # We also filter out zero categories to prevent trust-damaging hallucinations (e.g. Salary: 0%).
     breakdown = r.category_breakdown if r else {}
@@ -612,9 +616,15 @@ def _build_report_prompt(state: AgentState) -> str:
 Business report summary (STRICT SCOPE):
 - Period: {state.report_period_start} to {state.report_period_end}
 - Financials:
-  - Total income: KES {(r.total_income if r else 0):,.2f}
-  - Total expenses: KES {(r.total_expenses if r else 0):,.2f}
-  - Net profit: KES {(r.net_profit if r else 0):,.2f}
+  - Business Performance (AI Categorized):
+    - Total income: KES {(r.total_income if r else 0):,.2f}
+    - Total expenses: KES {(r.total_expenses if r else 0):,.2f}
+    - Net profit: KES {(r.net_profit if r else 0):,.2f}
+  - Raw Statement Totals:
+    - Total Inflows: KES {raw_inflows:,.2f}
+    - Total Outflows: KES {raw_outflows:,.2f}
+  - Clarity Note: {explanation}
+- Estimated Categorization Breakdown:
 - Estimated Categorization Breakdown:
 {breakdown_str}
 - Metadata:
@@ -629,6 +639,8 @@ Business report summary (STRICT SCOPE):
 Required Caveat: {caveat}
 
 Write the WhatsApp report now. Provide a warm narrative and one clear next action.
+Clearly distinguish between *Business Performance (AI Categorized)* and *Raw Statement Totals*.
+Include the Clarity Note explanation.
 Label all categorisation as ESTIMATED. Use the exact financial totals above.
 """.strip()
 
@@ -697,6 +709,10 @@ def generate_report(state: AgentState) -> dict:
             # T36: Mark AI specifically as degraded while preserving financial success
             ai_degraded = True
             
+            raw_inflows = sum(t.amount for t in state.raw_transactions if t.transaction_type == TransactionType.C2B)
+            raw_outflows = sum(t.amount for t in state.raw_transactions if t.transaction_type == TransactionType.B2C)
+            explanation = "Categorized totals may differ from raw statement totals due to classification such as refunds, transfers, or reversals."
+
             # FAANG-Grade Deterministic Fallback (P19-T9AS/T9AT Enforcement)
             vat_line = f"📋 *Estimated VAT:* KES {(v.net_vat_payable if v else 0):,.2f}\n" if v and v.net_vat_payable > 0 else ""
             next_ob = obs[0] if obs else None
@@ -706,9 +722,14 @@ def generate_report(state: AgentState) -> dict:
             reason = "connection issue" if "timeout" in str(llm_exc).lower() else "service busy"
             fallback_header = f"📊 *Mazao AI Business Summary*\n_AI insights unavailable ({reason}); showing computed metrics_\n\n"
             metrics_body = (
-                f"💰 *Total Income:* KES {(r.total_income if r else 0):,.2f}\n"
-                f"💸 *Total Expenses:* KES {(r.total_expenses if r else 0):,.2f}\n"
-                f"📈 *Net Profit:* KES {(r.net_profit if r else 0):,.2f}\n"
+                f"📈 *Business Performance (AI Categorized)*\n"
+                f"💰 Total Income: KES {(r.total_income if r else 0):,.2f}\n"
+                f"💸 Total Expenses: KES {(r.total_expenses if r else 0):,.2f}\n"
+                f"📈 Net Profit: KES {(r.net_profit if r else 0):,.2f}\n\n"
+                f"📑 *Raw Statement Totals*\n"
+                f"📥 Total Inflows: KES {raw_inflows:,.2f}\n"
+                f"📤 Total Outflows: KES {raw_outflows:,.2f}\n\n"
+                f"ℹ️ {explanation}\n\n"
                 f"{vat_line}{ob_line}"
                 f"\n⚠️ *Alert:* {r.flagged_count if r else 0} transactions need review.\n\n"
                 f"Next Action: Use /help for filing guides while we restore AI insights."

@@ -421,6 +421,34 @@
 - [x] FIX_03_04: Numeric Precision & Latency Optimization.
     - Record: Enforced deterministic 2-decimal precision (`:.2f`) across all LLM prompt and fallback metrics (Income, Expenses, Profit, VAT).
     - Record: Removed redundant `@retry` decorators from LLM-dependent nodes (`_call_llm_categorize`, `_call_llm_report`).
-    - Logic: Relied on `FallbackLLM` (Stage 1-4) for provider-level resilience, reducing total pipeline latency by eliminating multiplier-based retry delays.
+    - Evidence: Production v151 verified. Income (460,169.00), Expenses (216,981.75), Profit (243,187.25) match exactly across summary and AI narrative surfaces.
+    - Latency: Fresh run delivered in ~18s (Single pass); Cached run delivered in ~2s.
     - Result: Precise financial reporting and faster "Generating report..." UX.
     - Scope: `apps/agent/nodes.py`. Phase 20 lock intact.
+
+- [x] UX_01: Financial Surface Clarity & Trust Labeling.
+    - Record: Improved user trust by clearly distinguishing *Business Performance (AI Categorized)* from *Raw Statement Totals* in Telegram reports.
+    - Engineering:
+        - Updated `_build_report_prompt` in `nodes.py` to calculate raw inflows/outflows and provide explicit structured labeling to the LLM.
+        - Injected a mandatory Clarity Note: "Categorized totals may differ from raw statement totals due to classification such as refunds, transfers, or reversals."
+        - Hardened `generate_report` fallback to maintain this distinction when AI insight generation fails.
+        - Aligned `cmd_statement` in `handlers.py` with `📑 Raw Statement Totals` labeling and improved icons (📥/📤).
+    - Result: Eliminates user confusion regarding numeric discrepancies between raw data and AI-categorized insights.
+    - Scope: UX/Copy/Labeling only. Phase 20 lock intact.
+
+## Verification Protocol (v151+)
+To maintain high-integrity audits under the CQRS Read-Heal architecture, follow these rules:
+
+### 1. Conceptual Distinction
+*   **Parser Totals** (Raw): Directional sums (C2B Inflows vs B2C Outflows). Used only for statement summaries.
+*   **Business Totals** (Categorized): Value-based sums. `Income = Sales + Refund`. `Expenses = Salary + Supplier + Tax + Transfer`.
+*   **Result**: Business totals may diverge from Parser totals if Categorization overrides raw direction (e.g. Refund classified as Income).
+
+### 2. Freshness Authority
+*   **Match Requirement**: Audit comparison between Parser and AI Report is ONLY valid if `report.summary.statement_id == latest_statement.id`.
+*   **CQRS Window**: If a new `/statement` is uploaded, `/report` will serve a **Cached Report** (Stale) while background analysis is in progress.
+*   **Labeling**: Stale reports MUST be labeled "Latest AI Report" or "Degraded" in the footer. "Business Report" label signifies a fresh analysis.
+
+### 3. Latency Standards
+*   **Fresh Run**: < 30s (Stage 1-4 success).
+*   **Cached Run**: < 5s (Scenario A cache hit).

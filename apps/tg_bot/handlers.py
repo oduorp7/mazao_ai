@@ -1006,19 +1006,19 @@ async def cmd_statement(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         # P3-T5: Summary format with null-safety (FAANG grade robustness)
         text = (
-            "📂 *M-Pesa Statement Summary*\n"
+            "📑 *Raw Statement Totals*\n"
             f"Period: {statement.get('period', 'N/A')}\n"
             f"Parsed: {str(statement.get('parsed_at', '')).split('T')[0]}\n\n"
-            f"💰 Total Inflows:  KES {float(statement.get('total_inflows') or 0):,.2f}\n"
-            f"💸 Total Outflows: KES {float(statement.get('total_outflows') or 0):,.2f}\n"
+            f"📥 Total Inflows:  KES {float(statement.get('total_inflows') or 0):,.2f}\n"
+            f"📤 Total Outflows: KES {float(statement.get('total_outflows') or 0):,.2f}\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             f"📈 *Net Amount:    KES {float(statement.get('net') or 0):,.2f}*\n"
         )
         
         vat_est = float(statement.get("vat_estimate") or 0)
         if vat_est > 0:
-            text += f"\n📋 *Est. VAT Liability: KES {vat_est:,.2f}*"
-            text += "\n_(Label: Clearly an Estimate)_"
+            text += f"\n📋 *Est. VAT Liability: KES {vat_est:,.2f}*\n"
+            text += "_(Note: This is a raw estimate. Use /report for AI-categorized business performance.)_"
 
         await _reply(update, text)
     except Exception as exc:
