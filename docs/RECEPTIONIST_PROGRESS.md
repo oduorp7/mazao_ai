@@ -482,5 +482,7 @@ To maintain high-integrity audits under the CQRS Read-Heal architecture, follow 
 - **Write Path**: Completely unchanged. `/statement` upload → `save_report(report_text=narrative)` intact.
 - **Scope**: `apps/tg_bot/handlers.py` only. Phase 20 lock intact.
 - **Compile**: `python -m py_compile apps/tg_bot/handlers.py` — PASS.
-- **Deployment Required**: Yes — next task: DEPLOY_09.
+- **Deployment**: `v156` (Commit `9749783`) deployed successfully at 2026-05-07 15:56 EAT.
+- **Next Task**: VERIFY_09_REPORT_READ_PATH_CACHE_HIT.
+
 
