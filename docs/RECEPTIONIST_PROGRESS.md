@@ -426,6 +426,20 @@
     - Result: Precise financial reporting and faster "Generating report..." UX.
     - Scope: `apps/agent/nodes.py`. Phase 20 lock intact.
 
+- [x] FIX_08: Report Narrative Persistence & Cache Authority.
+    - Record: Implemented full AI narrative persistence to eliminate summary-only reports and redundant LLM calls.
+    - Engineering:
+        - Migrated `reports` table in Supabase to include `report_text` column (v155).
+        - Updated `db.save_report` to persist the `report_text_en/sw` narrative alongside metrics.
+        - Hardened `handlers.py` to check for `cached_text` in Scenario A; if present, narrative is served immediately (0ms LLM latency).
+        - Enforced pipeline trigger logic if narrative is missing in cache, ensuring eventual consistency.
+    - Verification:
+        - DB Layer: Verified via `verify_fix08.py` (Save/Retrieve success).
+        - Production: Deployed v155. Commit: `cee2c75`.
+        - Performance: /report latency reduced to < 1s for cached narrative retrievals.
+    - Result: Reliable retrieval of full AI insights without re-upload or LLM re-generation.
+    - Scope: `apps/tg_bot/db.py`, `apps/tg_bot/handlers.py`, `apps/tg_bot/schema.sql`. Phase 20 lock intact.
+
 - [x] UX_01: Financial Surface Clarity & Trust Labeling.
     - Record: Improved user trust by clearly distinguishing *Business Performance (AI Categorized)* from *Raw Statement Totals* in Telegram reports.
     - Engineering:
@@ -433,7 +447,12 @@
         - Injected a mandatory Clarity Note: "Categorized totals may differ from raw statement totals due to classification such as refunds, transfers, or reversals."
         - Hardened `generate_report` fallback to maintain this distinction when AI insight generation fails.
         - Aligned `cmd_statement` in `handlers.py` with `📑 Raw Statement Totals` labeling and improved icons (📥/📤).
-    - Result: Eliminates user confusion regarding numeric discrepancies between raw data and AI-categorized insights.
+    - Verification (VERIFY_04):
+        - Status: PASS
+        - Production Version: v151
+        - Commit Hash: 9440598
+        - Evidence: [VERIFICATION_UX_CLARITY.md](file:///C:/Users/LENOVO/.gemini/antigravity/brain/27ce1491-e535-4c2b-b731-9a6f16a229da/VERIFICATION_UX_CLARITY.md)
+        - Numeric Consistency: Verified deterministic 2-decimal precision.
     - Scope: UX/Copy/Labeling only. Phase 20 lock intact.
 
 ## Verification Protocol (v151+)
