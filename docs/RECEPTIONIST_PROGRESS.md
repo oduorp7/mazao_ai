@@ -471,3 +471,16 @@ To maintain high-integrity audits under the CQRS Read-Heal architecture, follow 
 ### 3. Latency Standards
 *   **Fresh Run**: < 30s (Stage 1-4 success).
 *   **Cached Run**: < 5s (Scenario A cache hit).
+
+---
+
+## FIX_09: Report Read-Path Uses Persisted report_text (v156)
+- **Root Cause Confirmed**: `cmd_report` (L1054) checked `summary.get("ai_narrative")` — a key never written by `db.save_report()`. The check was always `False`. STATE 3 (cache hit) was permanently unreachable. Every `/report` invocation fell through to STATE 2 and triggered `_run_pipeline_and_reply()`, calling the LLM unnecessarily.
+- **Fix Applied**: Replaced `summary.ai_narrative` check with direct `report.get("report_text")` + `summary.get("degraded", False)` check in `cmd_report`. Cached narrative now served directly when `report_text` is present and non-degraded. Zero LLM calls for cached reports.
+- **Legacy Handling**: Pre-v155 reports with `report_text=NULL` gracefully fall to STATE 2 (AUTO-HEAL) — backward compatible.
+- **Secondary Fix**: Removed duplicate `except` block at original L1085–1087.
+- **Write Path**: Completely unchanged. `/statement` upload → `save_report(report_text=narrative)` intact.
+- **Scope**: `apps/tg_bot/handlers.py` only. Phase 20 lock intact.
+- **Compile**: `python -m py_compile apps/tg_bot/handlers.py` — PASS.
+- **Deployment Required**: Yes — next task: DEPLOY_09.
+

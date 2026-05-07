@@ -1047,26 +1047,28 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         log.info("report_requested", telegram_id=tid, tenant_id=tenant["id"])
 
-        # CQRS READ-HEAL PATH (P20-FIX_05)
+        # CQRS READ PATH — FIX_09: Authority-first retrieval via persisted report_text
         report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
-        
-        # Determine Narrative Presence
-        has_narrative = bool(report and report.get("summary", {}).get("ai_narrative"))
-        
-        if report and has_narrative:
-            # STATE 3: CACHE HIT (Full AI Narrative)
-            summary = report.get("summary", {})
-            narrative = summary.get("ai_narrative")
-            created_at = report.get("created_at", datetime.now(timezone.utc).isoformat())
-            # Normalize ISO string for strftime compatibility
-            report_date = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d %b %Y")
-            footer = f"\n\n_Analysis from {report_date}. Upload /statement for new month analysis._"
-            await _reply(update, narrative + footer)
-            return
 
-        # STATE 2: AUTO-HEAL (Parsed data exists but no narrative)
+        if report:
+            summary = report.get("summary", {})
+            cached_text = report.get("report_text")
+            is_degraded = summary.get("degraded", False)
+
+            # FIX_09: Use report_text (correct persisted field) — NOT summary.ai_narrative (non-existent key).
+            # Serve cached narrative directly. Zero LLM invocation when cache is valid.
+            if cached_text and not is_degraded:
+                log.info("serving_cached_report_text", tenant_id=tenant["id"])
+                try:
+                    await context.bot.send_message(chat_id=tid, text=cached_text, parse_mode=ParseMode.MARKDOWN)
+                except Exception:
+                    await context.bot.send_message(chat_id=tid, text=cached_text, parse_mode=None)
+                return
+
+        # STATE 2: AUTO-HEAL — report_text is NULL (pre-v155 legacy report) or degraded or no report yet.
+        # Trigger LLM pipeline only when no valid cached narrative exists.
         latest_stmt = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
-        if latest_stmt or (report and not has_narrative):
+        if latest_stmt or report:
             # T36: Mutex Check — prevent parallel analysis if one is already running
             if _pipeline_locks.get(str(tenant["id"])):
                 await _reply(update, "🔄 *Analysis in Progress*\nI'm already working on your report. It will be ready in a few moments.")
@@ -1079,9 +1081,6 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # STATE 1: MISSING DATA
         await _reply(update, "📭 *No Statement Yet*\nUpload your M-Pesa CSV via /statement to get started.")
 
-    except Exception as exc:
-        log.exception("cmd_report_failed", telegram_id=_tg_id(update), error=str(exc))
-        await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error preparing your report. Please try again.")
     except Exception as exc:
         log.exception("cmd_report_failed", telegram_id=_tg_id(update), error=str(exc))
         await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error preparing your report. Please try again.")
