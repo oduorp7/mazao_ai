@@ -1,0 +1,16 @@
+{
+  "report_type": "BLOCKER_REPORT",
+  "prompt_id": "GOVERNANCE_BLOCKER_RESOLUTION_V1",
+  "status": "BLOCKED",
+  "file_found": false,
+  "file_path": "docs/governance/MAZAO_AI_CHAT_MIGRATION_CONTEXT_V1.json",
+  "json_valid": false,
+  "readable": false,
+  "fallback_detected": "Log-derived context available in conversation history (step 461 summary), but file-based anchor requested in load instructions is missing.",
+  "blocker_resolved": false,
+  "code_files_modified": 0,
+  "commit_status": "NONE",
+  "push_status": "NONE",
+  "known_issues": "CRITICAL: The migration context file is physically absent from the repository. No naming mismatches were detected in docs/governance/ or recursive JSON scans. As per 'do not recreate' and 'fail-closed' instructions, execution remains halted.",
+  "ready_for_next_prompt": false
+}

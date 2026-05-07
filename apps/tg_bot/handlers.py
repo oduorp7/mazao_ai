@@ -1584,14 +1584,14 @@ async def _run_pipeline_and_reply(
     Executes in background — never blocks the handler.
     """
     tid = tenant["telegram_id"]
-    tenant_uuid = str(tenant["id"])
+    tenant_id = str(tenant["id"])
 
     # P20-FIX_06: Mutex Lock Entrance
-    if _pipeline_locks.get(tenant_uuid):
-        log.info("pipeline_lock_active_ignoring", tenant_id=tenant_uuid)
+    if _pipeline_locks.get(tenant_id):
+        log.info("pipeline_lock_active_ignoring", tenant_id=tenant_id)
         return
     
-    _pipeline_locks[tenant_uuid] = True
+    _pipeline_locks[tenant_id] = True
 
     try:
         from apps.agent.pipeline import run_pipeline
@@ -1703,41 +1703,46 @@ async def _run_pipeline_and_reply(
                 # 1. Persist report (T31/T35/T36: Authority First — Save before delivery)
                 r = result.reconciliation
                 stmt_id = latest_stmt.get("id") if latest_stmt else None
-                await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: db.save_report(
-                        tenant_id=str(tenant["id"]),
-                        period=target_period,
-                        summary={
-                            "income": r.total_income if r else 0.0,
-                            "expenses": r.total_expenses if r else 0.0,
-                            "profit": r.net_profit if r else 0.0,
-                            "flagged": r.flagged_count if r else 0,
-                            "degraded": result.ai_degraded,
-                            "statement_id": stmt_id,
-                        },
-                        report_text=report_text,
-                    )
-                )
-
-                # 2. Attempt delivery with formatting (P19-T21-FIX: Robust Retry on Markdown Error)
                 try:
-                    await context.bot.send_message(
-                        chat_id=tid,
-                        text=report_text,
-                        parse_mode=ParseMode.MARKDOWN,
+                    await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: db.save_report(
+                            tenant_id=tenant_id,
+                            period=target_period,
+                            summary={
+                                "income": r.total_income if r else 0.0,
+                                "expenses": r.total_expenses if r else 0.0,
+                                "profit": r.net_profit if r else 0.0,
+                                "flagged": r.flagged_count if r else 0,
+                                "degraded": result.ai_degraded,
+                                "statement_id": stmt_id,
+                            },
+                            report_text=report_text,
+                        )
                     )
-                except Exception as send_err:
-                    log.warning("telegram_markdown_failed", error=str(send_err), tenant_id=tenant["id"])
-                    # Fallback to plain text delivery (Option A: Reliable Delivery Gate)
-                    await context.bot.send_message(
-                        chat_id=tid,
-                        text=report_text,
-                        parse_mode=None,
-                    )
+                    log.info("report_persisted_successfully", tenant_id=tenant_id, period=target_period)
+                except Exception as db_err:
+                    log.error("persistence_failed_proceeding_to_delivery", tenant_id=tenant_id, error=str(db_err))
+
+                # 2. Robust Chunked Delivery (Telegram 4096 limit guard)
+                # P19-T21-FIX: Reliable Delivery Gate with chunking and format recovery
+                chunks = [report_text[i:i+4000] for i in range(0, len(report_text), 4000)]
+                for i, chunk in enumerate(chunks):
+                    try:
+                        await context.bot.send_message(
+                            chat_id=tid,
+                            text=chunk,
+                            parse_mode=ParseMode.MARKDOWN,
+                        )
+                    except Exception as send_err:
+                        log.warning("telegram_markdown_failed_trying_plain", error=str(send_err), tenant_id=tenant_id, chunk=i)
+                        await context.bot.send_message(
+                            chat_id=tid,
+                            text=chunk,
+                            parse_mode=None,
+                        )
                 
                 # P17-T4J: Report value anchor nudge (Conversion Trigger 4)
-                # T43: Only nudge free-tier users who have not upgraded.
                 await _maybe_send_nudge(
                     update, context, 
                     M.NUDGE_REPORT_VALUE_ANCHOR, 
@@ -1841,8 +1846,8 @@ async def _run_pipeline_and_reply(
         )
     finally:
         # P20-FIX_06: Mutex Lock Release
-        _pipeline_locks.pop(tenant_uuid, None)
-        log.info("pipeline_lock_released", tenant_id=tenant_uuid)
+        _pipeline_locks.pop(tenant_id, None)
+        log.info("pipeline_lock_released", tenant_id=tenant_id)
 
 
 # ── /vat ──────────────────────────────────────────────────────────────────────

@@ -9,6 +9,23 @@ from apps.agent.utils.logging import get_logger
 
 log = get_logger(__name__)
 
+def detect_internal_transfer(name: str, tx_type: TransactionType) -> TransactionType:
+    """
+    T37: Detects if a transaction is an internal financing movement (M-Shwari, Fuliza, etc.)
+    while preserving business charges/fees.
+    """
+    name_upper = name.upper()
+    internal_keywords = [
+        "M-SHWARI", "MSHWARI", "FULIZA", "OVERDRAFT", "OD LOAN", 
+        "LOAN REPAYMENT", "GIVE TO", "WITHDRAW FROM", "DEPOSIT TO"
+    ]
+    is_internal = any(kw in name_upper for kw in internal_keywords)
+    is_charge = any(kw in name_upper for kw in ["CHARGE", "FEE", "COST"])
+    
+    if is_internal and not is_charge:
+        return TransactionType.INTERNAL_TRANSFER
+    return tx_type
+
 def parse(data: bytes | str, fmt: str) -> List[RawTransaction]:
     """
     Main entry point for parsing M-Pesa statements.
@@ -34,8 +51,12 @@ def parse(data: bytes | str, fmt: str) -> List[RawTransaction]:
         log.warning("unsupported_format", fmt=fmt)
         return []
 
-    deduped = _deduplicate(txs)
-    log.info("parsing_complete", count=len(deduped), fmt=fmt)
+    # T37: Exclude internal financing movements from the pipeline to prevent
+    # non-revenue drawdowns from inflating business income totals.
+    filtered = [t for t in txs if t.transaction_type != TransactionType.INTERNAL_TRANSFER]
+    deduped = _deduplicate(filtered)
+    
+    log.info("parsing_complete", count=len(deduped), excluded=len(txs)-len(filtered), fmt=fmt)
     return deduped
 
 def _parse_csv(text: str) -> List[RawTransaction]:
@@ -68,6 +89,12 @@ def _parse_csv(text: str) -> List[RawTransaction]:
             amount = paid_in if paid_in > 0 else withdrawn
             tx_type = TransactionType.C2B if paid_in > 0 else TransactionType.B2C
             
+            # T37: Internal Financing & Transfer Classification
+            # Prevents loan drawdowns and internal movements from inflating revenue/expenses.
+            # Charges (Fees) are preserved as business expenses even on internal movements.
+            name = get_any(row, ["Details", "Description"], "UNKNOWN")
+            tx_type = detect_internal_transfer(name, tx_type)
+
             # Format: 2024-04-18 14:30:00
             ts_str = get_any(row, ["Completion Time", "CompletionTime", "Date"])
             try:
@@ -79,7 +106,7 @@ def _parse_csv(text: str) -> List[RawTransaction]:
                 mpesa_ref=receipt,
                 amount=amount,
                 phone="", 
-                name=get_any(row, ["Details", "Description"], "UNKNOWN"),
+                name=name,
                 shortcode="",
                 transaction_type=tx_type,
                 timestamp=ts,
@@ -156,10 +183,15 @@ def _parse_sms(text: str) -> List[RawTransaction]:
     return []
 
 def _deduplicate(txs: List[RawTransaction]) -> List[RawTransaction]:
+    # T37: Context-aware deduplication.
+    # M-Pesa statements often use the same Receipt Number for the main transaction 
+    # and the associated 'Pay Bill Charge'. We must preserve both.
     seen = set()
     unique = []
     for tx in txs:
-        if tx.mpesa_ref not in seen:
-            seen.add(tx.mpesa_ref)
+        # Use (mpesa_ref, amount, name) as the unique key to preserve related charges
+        key = (tx.mpesa_ref, tx.amount, tx.name)
+        if key not in seen:
+            seen.add(key)
             unique.append(tx)
     return unique

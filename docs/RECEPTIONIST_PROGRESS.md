@@ -427,7 +427,9 @@
     - Scope: `apps/agent/nodes.py`. Phase 20 lock intact.
 
 - [x] FIX_08: Report Narrative Persistence & Cache Authority.
-    - Record: Implemented full AI narrative persistence to eliminate summary-only reports and redundant LLM calls.
+ - [FIX_09] Mazao AI: Refactored `/report` read-path to prioritize `report_text` column, enabling true caching and preventing redundant LLM calls.
+- [FIX_10] Mazao AI: Hardened `_run_pipeline_and_reply` with narrative chunking (4096 char guard), fixed variable scoping, and guaranteed persistence prior to delivery. This resolves the pipeline crash loop for long AI narratives.
+- [v157] Production Deployment: Stabilized report delivery and persistence gate. Verified cache-hit logic.
     - Engineering:
         - Migrated `reports` table in Supabase to include `report_text` column (v155).
         - Updated `db.save_report` to persist the `report_text_en/sw` narrative alongside metrics.

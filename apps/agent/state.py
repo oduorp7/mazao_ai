@@ -29,6 +29,7 @@ class TransactionType(str, Enum):
     B2C = "B2C"          # Business to Customer (payout)
     B2B = "B2B"          # Business to Business
     REVERSAL = "REVERSAL"
+    INTERNAL_TRANSFER = "INTERNAL_TRANSFER"
     UNKNOWN = "UNKNOWN"
 
 
@@ -63,7 +64,14 @@ class NodeStatus(str, Enum):
 # ---------------------------------------------------------------------------
 
 class RawTransaction(BaseModel):
-    """Raw M-Pesa event exactly as received from Daraja webhook."""
+    """
+    Raw M-Pesa event exactly as received from Daraja webhook or CSV.
+
+    [P19-T18] SCHEMA DRIFT CONTRACT:
+    Live feed transactions currently operate in DEGRADED MODE. The production
+    Supabase table 'live_transactions' is missing the 'tenant_id' column.
+    Matching logic must be resilient to this drift.
+    """
     mpesa_ref: str
     amount: float
     phone: str
@@ -103,7 +111,13 @@ class ReconciliationSummary(BaseModel):
 
 
 class VATReturn(BaseModel):
-    """Pre-filled VAT-3 data."""
+    """
+    Pre-filled VAT-3 data.
+
+    [P19-T17/T18] SCHEMA DRIFT CONTRACT:
+    Production Supabase lacks live_transactions.tenant_id column.
+    If DB fetch fails, fallback: empty list; rely on CSV/PDF uploads.
+    """
     period: str                    # e.g. "2026-03"
     gross_sales: float = 0.0
     exempt_sales: float = 0.0
@@ -174,6 +188,12 @@ class AgentState(BaseModel):
     # ── Control flow ──────────────────────────────────────────────────────
     should_abort: bool = False         # set True → pipeline short-circuits
     abort_reason: Optional[str] = None
+    # T36: Explicit pipeline failure flag. Set True by critical nodes on hard failure.
+    # Prevents generate_report from running on partial/empty data.
+    pipeline_failed: bool = False
+    # T36: Separates AI insight failure from financial computation failure.
+    # Set True if LLM fails but financials (reconcile) succeeded.
+    ai_degraded: bool = False
 
     class Config:
         arbitrary_types_allowed = True

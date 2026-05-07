@@ -1,0 +1,16 @@
+{
+  "report_type": "MIGRATION_CONTEXT_RESTORATION_REPORT",
+  "task_input_id": "P20_MIGRATION_CONTEXT_RESTORATION_V1",
+  "status": "COMPLETED",
+  "kernel_loaded": true,
+  "file_created": true,
+  "file_path": "docs/governance/MAZAO_AI_CHAT_MIGRATION_CONTEXT_V1.json",
+  "json_valid": true,
+  "readable": true,
+  "blocker_resolved": true,
+  "code_files_modified": 0,
+  "commit_hash": "UNTRACKED_STAGING_REQUIRED",
+  "push_status": "NONE",
+  "known_issues": "Temporary files cleaned. Only governance artifact created. side-effect pycache updates detected but irrelevant to source integrity.",
+  "ready_for_next_prompt": true
+}

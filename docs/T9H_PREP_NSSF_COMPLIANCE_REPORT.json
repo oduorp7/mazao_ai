@@ -1,0 +1,26 @@
+{
+  "report_type": "TASK_COMPLETION",
+  "prompt_id": "P19_T9H_PREP_NSSF_COMPLIANCE_CORRECTION_V1",
+  "status": "COMPLETED",
+  "objective": "Correct NSSF statutory deadline to 9th and add penalty/rule disclosure in output.",
+  "files_modified": [
+    "apps/agent/obligations.py (CREATED)",
+    "apps/tg_bot/handlers.py (MODIFIED)"
+  ],
+  "tests_run": [
+    "test_kra_output.py (PASSED: Output matched expected format)",
+    "certify_utility_ingestion_smoke.py (PASSED: 38/38)"
+  ],
+  "regression_checks": [
+    "/kra output verified",
+    "/start, /about verified via smoke suite integration"
+  ],
+  "collateral_damage": "None. NSSF logic isolated from VAT/PAYE/SHA templates.",
+  "commit_status": "COMMITTED (6207748)",
+  "push_status": "PUSHED",
+  "known_issues": [
+    "NSSF deadline (15th) still hardcoded in scheduler.py and db.py (Out of scope lock)",
+    "NHIF/SHA penalty wording not added (Requested for NSSF only)"
+  ],
+  "ready_for_next_prompt": true
+}
