@@ -1030,11 +1030,43 @@ async def cmd_statement(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         else:
             await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error processing your statement.")
 
+def _format_date_helper(dt_str: str | None) -> str:
+    if not dt_str:
+        return "N/A"
+    try:
+        cleaned = str(dt_str).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(cleaned)
+        return dt.strftime("%d %b %Y")
+    except Exception:
+        return str(dt_str).split('T')[0]
+
+def get_next_month_str(period_str: str) -> str:
+    try:
+        parts = period_str.split('-')
+        year = int(parts[0])
+        month = int(parts[1])
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+        dt = datetime(year, month, 1)
+        return dt.strftime("%B %Y")
+    except Exception:
+        return "next month"
+
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """FIX_09_REWRITE: 4-state CQRS read path for business report delivery.
+
+    State 1 — Cached hit:  report_text present and non-empty → serve composite immediately, RETURN.
+    State 2 — Cached miss: report exists, report_text absent  → trigger pipeline once, RETURN.
+    State 3 — No report:   guide user to upload a statement.
+    Mutex:    pipeline already running → inform and RETURN.
+    """
     try:
         tid = _tg_id(update)
-        await asyncio.get_event_loop().run_in_executor(None, lambda: db.clear_conv_state(tid))
-        tenant = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_tenant(tid))
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: db.clear_conv_state(tid))
+        tenant = await loop.run_in_executor(None, lambda: db.get_tenant(tid))
 
         if not tenant:
             await _reply(update, M.NOT_REGISTERED)
@@ -1042,48 +1074,82 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         # P7-T6: Feature Gating
         if not await is_feature_allowed(str(tenant["id"]), "report"):
-            await _reply(update, M.UPGRADE_REQUIRED.format(feature_name="Business Report", upgrade_link="/upgrade"))
+            await _reply(update, M.UPGRADE_REQUIRED.format(
+                feature_name="Business Report",
+                upgrade_link="/upgrade"
+            ))
             return
 
         log.info("report_requested", telegram_id=tid, tenant_id=tenant["id"])
 
-        # CQRS READ PATH — FIX_09: Authority-first retrieval via persisted report_text
-        report = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_report(str(tenant["id"])))
+        # ── Step 1: Authoritative DB read ────────────────────────────────────
+        report = await loop.run_in_executor(None, db.get_latest_report, str(tenant["id"]))
 
-        if report:
-            summary = report.get("summary", {})
-            cached_text = report.get("report_text")
-            is_degraded = summary.get("degraded", False)
+        # ── Step 2: State 1 — report_text is the SOLE authority ──────────────
+        if report is not None:
+            report_text = report.get("report_text")
 
-            # FIX_09: Use report_text (correct persisted field) — NOT summary.ai_narrative (non-existent key).
-            # Serve cached narrative directly. Zero LLM invocation when cache is valid.
-            if cached_text and not is_degraded:
+            if report_text and len(str(report_text).strip()) > 10:
                 log.info("serving_cached_report_text", tenant_id=tenant["id"])
+
+                # Fetch latest statement for parser headline figures
+                statement = await loop.run_in_executor(
+                    None, db.get_latest_statement, str(tenant["id"])
+                )
+
+                # Derive parser figures; fallback gracefully if statement missing
+                if statement:
+                    parser_income      = float(statement.get("total_inflows") or 0)
+                    parser_expenses    = float(statement.get("total_outflows") or 0)
+                    statement_date_raw = statement.get("parsed_at") or statement.get("created_at")
+                else:
+                    parser_income      = 0.0
+                    parser_expenses    = 0.0
+                    statement_date_raw = report.get("created_at")
+
+                parser_net = parser_income - parser_expenses
+                period     = report.get("period", "N/A")
+
+                composite_msg = (
+                    f"📊 *Business Report — {period}*\n"
+                    f"_Based on statement uploaded {_format_date_helper(statement_date_raw)}_\n\n"
+                    f"💰 *Income:*     KES {_fmt_kes(parser_income)}\n"
+                    f"💸 *Expenses:*   KES {_fmt_kes(parser_expenses)}\n"
+                    f"📈 *Net Profit:* KES {_fmt_kes(parser_net)}\n\n"
+                    f"{report_text.strip()}\n\n"
+                    f"─────────────────────────\n"
+                    f"_Analysis from {_format_date_helper(report.get('created_at'))}._\n"
+                    f"_Upload /statement for {get_next_month_str(period)} analysis._"
+                )
+
                 try:
-                    await context.bot.send_message(chat_id=tid, text=cached_text, parse_mode=ParseMode.MARKDOWN)
+                    await _reply(update, composite_msg)
                 except Exception:
-                    await context.bot.send_message(chat_id=tid, text=cached_text, parse_mode=None)
+                    await _reply(update, composite_msg, parse_mode=None)
                 return
 
-        # STATE 2: AUTO-HEAL — report_text is NULL (pre-v155 legacy report) or degraded or no report yet.
-        # Trigger LLM pipeline only when no valid cached narrative exists.
-        latest_stmt = await asyncio.get_event_loop().run_in_executor(None, lambda: db.get_latest_statement(str(tenant["id"])))
-        if latest_stmt or report:
-            # T36: Mutex Check — prevent parallel analysis if one is already running
+            # ── Step 3: State 2 — report exists, report_text absent → pipeline ──
             if _pipeline_locks.get(str(tenant["id"])):
-                await _reply(update, "🔄 *Analysis in Progress*\nI'm already working on your report. It will be ready in a few moments.")
+                await _reply(
+                    update,
+                    "🔄 *Analysis in Progress*\nI'm already working on your report. It will be ready in a few moments."
+                )
                 return
 
-            await _reply(update, "🔄 *Generating your business report...*\nI found your parsed statement data. Please wait while I analyze it.")
+            log.info("report_text_absent_triggering_pipeline", tenant_id=tenant["id"])
+            await _reply(update, "🔄 *Your statement was parsed. Generating analysis now...*")
             context.application.create_task(_run_pipeline_and_reply(update, context, tenant))
             return
 
-        # STATE 1: MISSING DATA
-        await _reply(update, "📭 *No Statement Yet*\nUpload your M-Pesa CSV via /statement to get started.")
+        # ── Step 4: No report at all — guide user ────────────────────────────
+        await _render_report_empty_state(update)
 
     except Exception as exc:
         log.exception("cmd_report_failed", telegram_id=_tg_id(update), error=str(exc))
-        await _reply(update, "⚠️ *Mazao AI Logic Error*\nI encountered an internal error preparing your report. Please try again.")
+        await _reply(
+            update,
+            "⚠️ *Mazao AI Logic Error*\nI encountered an internal error preparing your report. Please try again."
+        )
 
 
 async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1800,7 +1866,9 @@ async def _run_pipeline_and_reply(
                 footer = "_Analysis is current for your latest uploaded statement._"
             else:
                 header = f"📊 *Latest AI Report ({period})*"
-                footer = "_Showing last generated AI insights. For a fresh analysis, upload a new /statement._"
+                report_date = _format_date_helper(period_report.get("created_at"))
+                next_month = get_next_month_str(period)
+                footer = f"_Analysis from {report_date}._\n_Upload /statement for {next_month} analysis._"
 
             text = (
                 f"{header}\n\n"
