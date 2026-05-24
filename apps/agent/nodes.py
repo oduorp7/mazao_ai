@@ -570,11 +570,29 @@ End with "Regards, Mazao AI" and ONE clear next action.
 Write in {language}."""
 
 
-def _call_llm_report(prompt: str, language: str, business_name: str) -> str:
+def _call_llm_report(
+    prompt: str,
+    language: str,
+    business_name: str,
+    parser_income: str,
+    parser_expenses: str,
+    parser_net: str,
+) -> str:
     """Uses the unified LLM factory for report generation."""
     llm = get_llm()
+    base_content = REPORT_SYSTEM_PROMPT.format(language=language, business_name=business_name)
+    
+    # Inject parser figures as FIXED FACTS
+    addition = (
+        f"\n\nThe following figures are AUTHORITATIVE and must be used exactly as provided. "
+        f"Do NOT compute your own totals. "
+        f"Income: KES {parser_income}. Expenses: KES {parser_expenses}. Net Profit: KES {parser_net}. "
+        f"These figures come from the official M-Pesa statement and cannot be changed."
+    )
+    system_content = base_content + addition
+    
     messages = [
-        SystemMessage(content=REPORT_SYSTEM_PROMPT.format(language=language, business_name=business_name)),
+        SystemMessage(content=system_content),
         HumanMessage(content=prompt)
     ]
     try:
@@ -696,9 +714,48 @@ def generate_report(state: AgentState) -> dict:
 
         # 3. Inner LLM Try-Block (already hardened in T9AS)
         try:
+            # Format figures for LLM system prompt injection (FIX_10_LLM_FIXED_INPUTS)
+            def fmt(val: float) -> str:
+                if val.is_integer():
+                    return f"{int(val):,}"
+                return f"{val:,.2f}"
+
+            parser_income = fmt(r.total_income) if r else "0"
+            parser_expenses = fmt(r.total_expenses) if r else "0"
+            parser_net = fmt(r.net_profit) if r else "0"
+
             prompt = _build_report_prompt(state)
-            report_en = _call_llm_report(prompt, "English", business_name)
-            report_sw = _call_llm_report(prompt, "Swahili", business_name)
+            report_en = _call_llm_report(prompt, "English", business_name, parser_income, parser_expenses, parser_net)
+            report_sw = _call_llm_report(prompt, "Swahili", business_name, parser_income, parser_expenses, parser_net)
+
+            # Post-processing Safeguard: Ensure narrative net profit figure matches parser_net exactly.
+            # If the LLM mistakenly computed the raw net profit, replace it with the authoritative parser_net.
+            raw_inflows = sum(t.amount for t in state.raw_transactions if t.transaction_type == TransactionType.C2B)
+            raw_outflows = sum(t.amount for t in state.raw_transactions if t.transaction_type == TransactionType.B2C)
+            raw_net = raw_inflows - raw_outflows
+
+            wrong_representations = [
+                f"{raw_net:,.2f}",
+                f"{raw_net:,.0f}",
+                f"{int(raw_net):,}" if raw_net.is_integer() else None,
+                f"{raw_net:.2f}",
+                f"{raw_net:.0f}",
+                str(raw_net),
+                str(int(raw_net)) if raw_net.is_integer() else None,
+            ]
+            wrong_representations = [w for w in wrong_representations if w is not None]
+
+            for wrong_rep in wrong_representations:
+                if len(wrong_rep) >= 4:  # Avoid replacing '0', '1', etc.
+                    report_en = report_en.replace(wrong_rep, parser_net)
+                    report_sw = report_sw.replace(wrong_rep, parser_net)
+
+            # If parser_net has no cents (e.g. "88,398"), ensure the narrative doesn't append ".00" or ".0" to it
+            if "." not in parser_net:
+                report_en = report_en.replace(f"{parser_net}.00", parser_net)
+                report_en = report_en.replace(f"{parser_net}.0", parser_net)
+                report_sw = report_sw.replace(f"{parser_net}.00", parser_net)
+                report_sw = report_sw.replace(f"{parser_net}.0", parser_net)
         except Exception as llm_exc:
             log.warning(
                 "llm_report_failed_using_template",
