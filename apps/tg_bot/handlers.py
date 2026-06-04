@@ -19,7 +19,7 @@ import structlog
 import asyncio
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from typing import Dict, List, Optional
 from apps.agent import estimator
 from apps.agent import obligations
@@ -216,7 +216,7 @@ def _detect_tariff_tier(rate_per_unit: float) -> Dict:
 
 async def _validate_token_entry(update: Update, purchase_date, units, amount: Optional[float] = None) -> bool:
     """Validate token entry fields before any token_entries write."""
-    today = datetime.now(timezone.utc).date()
+    today = date.today()
 
     if purchase_date > today:
         await _reply(
@@ -1354,10 +1354,9 @@ async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 prev = readings[1]
                 p_date_raw = prev["purchase_date"]
                 previous_purchase_date = datetime.fromisoformat(p_date_raw.replace("Z", "+00:00"))
-                now = datetime.now(timezone.utc)
 
-                elapsed_seconds = (now - previous_purchase_date).total_seconds()
-                elapsed_days = max(0.01, elapsed_seconds / 86400)
+                days_elapsed = (date.today() - previous_purchase_date.date()).days if hasattr(previous_purchase_date, 'date') else (date.today() - previous_purchase_date).days
+                elapsed_days = max(0.01, days_elapsed)
 
                 prev_units = float(prev["units"])
                 consumed = elapsed_days * daily_rate
@@ -1370,7 +1369,7 @@ async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             days_remaining = estimator.calculate_days_remaining(total_units_for_projection, daily_rate)
             if total_units_for_projection > 0 and days_remaining == 0:
                 days_remaining = 1
-            depletion_date = (datetime.now(timezone.utc) + timedelta(days=days_remaining)).strftime("%d %b %Y")
+            depletion_date = (date.today() + timedelta(days=days_remaining)).strftime("%d %b %Y")
 
             # Confidence Info
             conf = estimator.get_confidence_info(n)
