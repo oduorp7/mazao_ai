@@ -1383,7 +1383,7 @@ async def awaiting_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     d2 = datetime.fromisoformat(readings[1]["purchase_date"].replace("Z", "+00:00")).date()
                     gap_days = (d1 - d2).days
                     if gap_days > 0:
-                        this_rate = units / gap_days
+                        this_rate = float(readings[1]["units"]) / gap_days
                         if estimator.detect_anomaly(this_rate, readings[1:]):
                             anomaly_warning = "\n\n⚠️ *Anomaly Detected:* This reading seems unusual compared to your history."
 
