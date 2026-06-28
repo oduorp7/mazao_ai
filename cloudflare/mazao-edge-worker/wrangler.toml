@@ -1,0 +1,12 @@
+name = "mazao-edge-worker"
+main = "src/index.js"
+compatibility_date = "2026-06-28"
+workers_dev = true
+
+[vars]
+ORIGIN_BASE_URL = "https://mazao-ai.fly.dev"
+SERVICE_NAME = "mazao-edge-worker"
+
+[[routes]]
+pattern = "mazao.codegxtechnologies.org"
+custom_domain = true
