@@ -25,7 +25,15 @@ Wakala OS was rejected for this specific use case because its n8n architecture r
 | **The "Brain"** | Manus Agentic Ecosystem | Triggered asynchronously via `httpx` from Mazao AI. Navigates live supermarket sites (Naivas, Carrefour, Quickmart), extracts prices, performs brand matching, and returns JSON data. |
 | **Database** | Supabase (Shared with Mazao AI) | Stores user profiles, handles Pro-tier billing flags (via Daraja), and serves as the primary **Smart Cache** for prices to eliminate token wastage. |
 
-### 2.2. Step-by-Step Data Flow
+### 2.2. Core Design Principles
+
+**1. B2C Single-Bot Topology (No Middleware)**
+Unlike the Wakala OS Agency model which required spinning up new bots for new clients, this integration is a strict B2C SaaS. A single Telegram bot (`@MazaoAIBot`) serves all users concurrently. Because the backend is a native Python app using `python-telegram-bot` hosted on Fly.io, Telegram communicates **directly** with our webhook. There is zero overhead—no n8n, no Publora, and no middleware subscriptions required.
+
+**2. Vendor Agnosticism**
+While Manus AI is currently recommended for browser interactions, integrating via a custom Python backend ensures we are not locked into any single vendor. If OpenAI releases a cheaper browsing agent, or Anthropic's "Computer Use" becomes more viable, we simply swap the API call in our Python code. The core bot interface, Supabase caching, and Daraja billing remain entirely untouched.
+
+### 2.3. Step-by-Step Data Flow
 
 1.  **User Request**: A user sends a message to the Telegram bot: "I need 500ml Fresha milk and 1kg Mumias sugar."
 2.  **Backend Processing**: The Telegram Bot API forwards the message to the Backend Service via a webhook. The backend verifies the user's subscription status.
