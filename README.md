@@ -49,7 +49,7 @@ All technical, legal, and strategic documentation is in the docs/ directory:
    - FLY_APP_URL
    - Payment provider keys (Intasend, Daraja - optional)
 
-2. **Database**: Run pps/tg_bot/schema.sql in Supabase SQL Editor.
+2. **Database**: Run  pps/tg_bot/schema.sql in Supabase SQL Editor.
 
 3. **Deploy**: ly deploy (Port 8080 for webhooks).
 
@@ -101,3 +101,82 @@ Authors & Maintainers: Peter O. Oluoch (Backend Engineer, AI Architect)
 ## Support
 
 For issues, feature requests, or feedback, please use the /feedback command in the bot or open an issue on GitHub.
+
+---
+
+# Repository Workflow & Synchronization
+
+## Overview
+
+Mazao AI uses a single local development repository with two synchronized GitHub repositories.
+
+Developers should work from only one local working directory:
+
+
+the_mazaos/
+└── mazao_ai/
+
+
+The project is synchronized to two GitHub repositories:
+
+1. Primary repository:
+
+
+https://github.com/peteroluoch/mazao_ai
+
+
+2. Mirror repository:
+
+
+https://github.com/oduorp7/mazao_ai
+
+
+Both repositories contain the same Git history and are kept synchronized through the `pushall` workflow.
+
+---
+
+# Local Repository Structure
+
+The recommended local structure is:
+
+
+the_mazaos/
+│
+├── mazao_ai/
+│ ├── application code
+│ ├── documentation
+│ ├── scripts
+│ └── project files
+│
+└── mazao_ai_backup.git/
+└── offline Git backup repository
+
+
+## Development Repository
+
+All development happens inside:
+
+
+the_mazaos/mazao_ai
+
+
+Do not develop directly inside:
+
+
+mazao_ai_backup.git
+
+
+The backup repository is a bare Git repository intended only for recovery purposes.
+
+---
+
+# Git Remote Configuration
+
+The working repository contains two remotes:
+
+
+origin
+https://github.com/peteroluoch/mazao_ai.git
+
+oduorp7
+https://github.com/oduorp7/mazao_ai.git
